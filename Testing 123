@@ -3,12 +3,13 @@ Sub ShowAll_ActiveSheet()
     Dim ws As Worksheet
     Set ws = ActiveSheet
 
-    ' Unprotect
+    Dim lastRow As Long
+
     On Error Resume Next
-    ws.Unprotect Password:="YourPassword"
+    ws.Unprotect Password:="Custody"
     On Error GoTo 0
 
-    ' Clear normal filters
+    ' ===== CLEAR FILTERS =====
     If ws.AutoFilterMode Then
         If ws.FilterMode Then
             On Error Resume Next
@@ -17,7 +18,6 @@ Sub ShowAll_ActiveSheet()
         End If
     End If
 
-    ' Clear table filters
     Dim tbl As ListObject
     For Each tbl In ws.ListObjects
         If tbl.AutoFilter.FilterMode Then
@@ -27,14 +27,39 @@ Sub ShowAll_ActiveSheet()
         End If
     Next tbl
 
-    ' Re-protect EXACTLY like your screenshot
-    ws.Protect Password:="YourPassword", _
+    ' ===== LOCK LOGIC =====
+    lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
+
+    ' First unlock everything (reset state)
+    ws.Cells.Locked = False
+
+    If ws.Name = "Request for Information" Then
+        
+        ' Lock A column
+        ws.Range("A3:A" & lastRow).Locked = True
+        
+        ' Lock T to W
+        ws.Range("T3:W" & lastRow).Locked = True
+
+    ElseIf ws.Name = "Rejection" Then
+        
+        ' Lock X to Z
+        ws.Range("X3:Z" & lastRow).Locked = True
+        
+        ' Lock AB to AC
+        ws.Range("AB3:AC" & lastRow).Locked = True
+
+    End If
+
+    ' ===== PROTECT =====
+    ws.Protect Password:="Custody", _
         DrawingObjects:=True, _
         Contents:=True, _
         Scenarios:=True, _
         AllowSorting:=True, _
-        AllowFiltering:=True, _
-        AllowSelectingLockedCells:=True, _
-        AllowSelectingUnlockedCells:=True
+        AllowFiltering:=True
+
+    ' ===== CONTROL SELECTION =====
+    ws.EnableSelection = xlUnlockedCells
 
 End Sub
