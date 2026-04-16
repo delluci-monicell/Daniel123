@@ -1,196 +1,35 @@
-Understood! Here is your complete final code to copy and use:
-
-Module 1 — Paste in a Regular Module (Insert → Module)
-
-Sub ClearAllFilters()
+Sub ShowAll_ActiveSheet()
 
     Dim ws As Worksheet
     Set ws = ActiveSheet
 
-    ' Only works on Sheet 2 and Sheet 3
-    If ws.Name <> "Sheet2" And ws.Name <> "Sheet3" Then
-        MsgBox "This macro only works on Sheet 2 or Sheet 3!", vbExclamation
-        Exit Sub
-    End If
+    ' Unprotect safely
+    On Error Resume Next
+    ws.Unprotect Password:="YourPassword"
+    On Error GoTo 0
 
-    ' Clear filters if active
+    ' Handle normal range filters
     If ws.AutoFilterMode Then
         If ws.FilterMode Then
+            On Error Resume Next
             ws.ShowAllData
-            MsgBox "Filters cleared on: " & ws.Name, vbInformation
-        Else
-            MsgBox "No active filters to clear on: " & ws.Name, vbInformation
-        End If
-    Else
-        MsgBox "AutoFilter is not enabled on: " & ws.Name, vbExclamation
-    End If
-
-End Sub
-
-
-Sub ProtectTargetSheets()
-
-    Dim ws As Worksheet
-    Dim sheetNames As Variant
-    Dim i As Integer
-
-    ' Your exact sheet tab names
-    sheetNames = Array("Sheet2", "Sheet3")
-
-    For i = 0 To UBound(sheetNames)
-        Set ws = ThisWorkbook.Sheets(sheetNames(i))
-        ws.Unprotect Password:="yourpassword"
-        ws.Protect Password:="yourpassword", _
-            DrawingObjects:=True, _
-            Contents:=True, _
-            Scenarios:=True, _
-            AllowSorting:=True, _
-            AllowFiltering:=True, _
-            UserInterfaceOnly:=True
-    Next i
-
-    MsgBox "Sheet 2 and Sheet 3 protected successfully!", vbInformation
-
-End Sub
-
-
-Module 2 — Paste in ThisWorkbook module
-
-Private Sub Workbook_Open()
-
-    ' Re-protect Sheet 2 and 3 with UserInterfaceOnly every time file opens
-    Call ProtectTargetSheets
-
-End Sub
-
-
-Setup Steps — Do this once:
-	1.	Open VBA editor — Alt + F11
-	2.	Insert → Module → paste the first block
-	3.	Click ThisWorkbook on the left panel → paste the second block
-	4.	Replace "Sheet2" and "Sheet3" with your exact sheet tab names
-	5.	Replace "yourpassword" with your actual password (all 3 places)
-	6.	Manually unprotect Sheet 2 and Sheet 3 from Review tab
-	7.	Run ProtectTargetSheets macro once manually from Alt+F8
-	8.	Add your Command Button on Sheet 2 and Sheet 3
-	9.	Assign ClearAllFilters macro to both buttons
-	10.	Save the file as .xlsm (macro enabled format)
-
-What to inform your team:
-
-
-
-|Scenario                                                                     |What happens                                                           |
-|-----------------------------------------------------------------------------|-----------------------------------------------------------------------|
-|File opened in **Excel Desktop** alone                                       |✅ Macro and button works perfectly                                     |
-|File opened in **Excel Desktop** with co-authoring (multiple users same time)|⚠️ Macro may not work — users should use **Data → Clear** button instead|
-|File opened in **Excel Online** (
-⚠️ Replace "Sheet2", "Sheet3", and "yourpassword" with your actual names and password before using.​​​​​​​​​​​​​​​​
-
-
-
-
-
-
-
-
-
-
-
-Sub SetupAndProtectSheets()
-
-    Dim ws As Worksheet
-    Dim sheetNames As Variant
-    Dim i As Integer
-
-    sheetNames = Array("Sheet2", "Sheet3")
-
-    For i = 0 To UBound(sheetNames)
-        Set ws = ThisWorkbook.Sheets(sheetNames(i))
-
-        ' Step 1 - Turn ON AutoFilter first if not already on
-        If Not ws.AutoFilterMode Then
-            ws.Range("A1").AutoFilter
-        End If
-
-        ' Step 2 - Protect the sheet with all your settings
-        ws.Protect Password:="yourpassword", _
-            DrawingObjects:=True, _
-            Contents:=True, _
-            Scenarios:=True, _
-            AllowSorting:=True, _
-            AllowFiltering:=True, _
-            UserInterfaceOnly:=True
-
-    Next i
-
-    MsgBox "Sheets protected and AutoFilter enabled!", vbInformation
-
-End Sub
-
-
-Sub ClearAllFilters()
-
-    Dim ws As Worksheet
-    Set ws = ActiveSheet
-
-    ' Check if this is Sheet2 or Sheet3
-    If ws.Name <> "Sheet2" And ws.Name <> "Sheet3" Then
-        MsgBox "This button only works on Sheet 2 or Sheet 3!", vbExclamation
-        Exit Sub
-    End If
-
-    ' Turn ON AutoFilter if someone accidentally turned it off
-    If Not ws.AutoFilterMode Then
-        ws.Unprotect Password:="yourpassword"
-        ws.Range("A1").AutoFilter
-        ws.Protect Password:="yourpassword", _
-            DrawingObjects:=True, _
-            Contents:=True, _
-            Scenarios:=True, _
-            AllowSorting:=True, _
-            AllowFiltering:=True, _
-            UserInterfaceOnly:=True
-    End If
-
-    ' Now clear all active filters
-    If ws.FilterMode Then
-        ws.ShowAllData
-        MsgBox "All filters cleared on: " & ws.Name, vbInformation
-    Else
-        MsgBox "No active filters to clear on: " & ws.Name, vbInformation
-    End If
-
-End Sub
-
-
-
-
-
-
-Sub ClearAllFilters()
-
-    Dim ws As Worksheet
-    Set ws = ActiveSheet
-
-    ws.Unprotect Password:="Custody"
-
-    If ws.AutoFilterMode Then
-        If ws.FilterMode Then
-            ws.ShowAllData
+            On Error GoTo 0
         End If
     End If
 
-    ws.Protect Password:="Custody", _
-        DrawingObjects:=True, _
-        Contents:=True, _
-        Scenarios:=True, _
-        AllowSorting:=True, _
+    ' Handle tables (important — most people forget this)
+    Dim tbl As ListObject
+    For Each tbl In ws.ListObjects
+        If tbl.AutoFilter.FilterMode Then
+            On Error Resume Next
+            tbl.AutoFilter.ShowAllData
+            On Error GoTo 0
+        End If
+    Next tbl
+
+    ' Re-protect with proper permissions
+    ws.Protect Password:="YourPassword", _
         AllowFiltering:=True, _
-        UserInterfaceOnly:=True
-
-    MsgBox "Filters cleared on: " & ws.Name, vbInformation
+        AllowSorting:=True
 
 End Sub
-
-
