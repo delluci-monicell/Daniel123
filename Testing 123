@@ -162,3 +162,35 @@ Sub ClearAllFilters()
     End If
 
 End Sub
+
+
+
+
+
+
+Sub ClearAllFilters()
+
+    Dim ws As Worksheet
+    Set ws = ActiveSheet
+
+    ws.Unprotect Password:="Custody"
+
+    If ws.AutoFilterMode Then
+        If ws.FilterMode Then
+            ws.ShowAllData
+        End If
+    End If
+
+    ws.Protect Password:="Custody", _
+        DrawingObjects:=True, _
+        Contents:=True, _
+        Scenarios:=True, _
+        AllowSorting:=True, _
+        AllowFiltering:=True, _
+        UserInterfaceOnly:=True
+
+    MsgBox "Filters cleared on: " & ws.Name, vbInformation
+
+End Sub
+
+
