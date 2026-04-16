@@ -3,12 +3,12 @@ Sub ShowAll_ActiveSheet()
     Dim ws As Worksheet
     Set ws = ActiveSheet
 
-    ' Unprotect safely
+    ' Unprotect
     On Error Resume Next
     ws.Unprotect Password:="YourPassword"
     On Error GoTo 0
 
-    ' Handle normal range filters
+    ' Clear normal filters
     If ws.AutoFilterMode Then
         If ws.FilterMode Then
             On Error Resume Next
@@ -17,7 +17,7 @@ Sub ShowAll_ActiveSheet()
         End If
     End If
 
-    ' Handle tables (important — most people forget this)
+    ' Clear table filters
     Dim tbl As ListObject
     For Each tbl In ws.ListObjects
         If tbl.AutoFilter.FilterMode Then
@@ -27,9 +27,14 @@ Sub ShowAll_ActiveSheet()
         End If
     Next tbl
 
-    ' Re-protect with proper permissions
+    ' Re-protect EXACTLY like your screenshot
     ws.Protect Password:="YourPassword", _
+        DrawingObjects:=True, _
+        Contents:=True, _
+        Scenarios:=True, _
+        AllowSorting:=True, _
         AllowFiltering:=True, _
-        AllowSorting:=True
+        AllowSelectingLockedCells:=True, _
+        AllowSelectingUnlockedCells:=True
 
 End Sub
