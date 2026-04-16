@@ -84,6 +84,81 @@ What to inform your team:
 |-----------------------------------------------------------------------------|-----------------------------------------------------------------------|
 |File opened in **Excel Desktop** alone                                       |✅ Macro and button works perfectly                                     |
 |File opened in **Excel Desktop** with co-authoring (multiple users same time)|⚠️ Macro may not work — users should use **Data → Clear** button instead|
-|File opened in **Excel Online** (browser)                                    |❌ Macro will not work — use filter dropdowns to clear manually         |
-
+|File opened in **Excel Online** (
 ⚠️ Replace "Sheet2", "Sheet3", and "yourpassword" with your actual names and password before using.​​​​​​​​​​​​​​​​
+
+
+
+
+
+
+
+
+
+
+
+Sub SetupAndProtectSheets()
+
+    Dim ws As Worksheet
+    Dim sheetNames As Variant
+    Dim i As Integer
+
+    sheetNames = Array("Sheet2", "Sheet3")
+
+    For i = 0 To UBound(sheetNames)
+        Set ws = ThisWorkbook.Sheets(sheetNames(i))
+
+        ' Step 1 - Turn ON AutoFilter first if not already on
+        If Not ws.AutoFilterMode Then
+            ws.Range("A1").AutoFilter
+        End If
+
+        ' Step 2 - Protect the sheet with all your settings
+        ws.Protect Password:="yourpassword", _
+            DrawingObjects:=True, _
+            Contents:=True, _
+            Scenarios:=True, _
+            AllowSorting:=True, _
+            AllowFiltering:=True, _
+            UserInterfaceOnly:=True
+
+    Next i
+
+    MsgBox "Sheets protected and AutoFilter enabled!", vbInformation
+
+End Sub
+
+
+Sub ClearAllFilters()
+
+    Dim ws As Worksheet
+    Set ws = ActiveSheet
+
+    ' Check if this is Sheet2 or Sheet3
+    If ws.Name <> "Sheet2" And ws.Name <> "Sheet3" Then
+        MsgBox "This button only works on Sheet 2 or Sheet 3!", vbExclamation
+        Exit Sub
+    End If
+
+    ' Turn ON AutoFilter if someone accidentally turned it off
+    If Not ws.AutoFilterMode Then
+        ws.Unprotect Password:="yourpassword"
+        ws.Range("A1").AutoFilter
+        ws.Protect Password:="yourpassword", _
+            DrawingObjects:=True, _
+            Contents:=True, _
+            Scenarios:=True, _
+            AllowSorting:=True, _
+            AllowFiltering:=True, _
+            UserInterfaceOnly:=True
+    End If
+
+    ' Now clear all active filters
+    If ws.FilterMode Then
+        ws.ShowAllData
+        MsgBox "All filters cleared on: " & ws.Name, vbInformation
+    Else
+        MsgBox "No active filters to clear on: " & ws.Name, vbInformation
+    End If
+
+End Sub
