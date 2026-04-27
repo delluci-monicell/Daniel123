@@ -1,131 +1,157 @@
-Sub Create_Outlook_PDF_Downloader()
+Sub PickDateFrom()
+    Dim dt As Variant
+    dt = Application.InputBox("Enter From Date (dd/mm/yyyy)", Type:=2)
 
-    Dim newWB As Workbook
-    Dim wsDash As Worksheet
-    Dim wsLog As Worksheet
-    Dim savePath As String
-    Dim vbProj As Object
-    Dim vbComp As Object
-    Dim codeMod As Object
-    
-    Application.ScreenUpdating = False
-    Application.DisplayAlerts = False
-    
-    'Create new workbook
-    Set newWB = Workbooks.Add
-    
-    'Remove extra default sheets
-    Do While newWB.Sheets.Count > 1
-        newWB.Sheets(newWB.Sheets.Count).Delete
-    Loop
-    
-    '-----------------------------------
-    ' Dashboard Sheet
-    '-----------------------------------
-    Set wsDash = newWB.Sheets(1)
-    wsDash.Name = "Dashboard"
-    
-    With wsDash
-    
-        .Range("A1:G1").Merge
-        .Range("A1").Value = "OUTLOOK PDF ATTACHMENT DOWNLOADER"
-        .Range("A1").HorizontalAlignment = xlCenter
-        .Range("A1").Font.Bold = True
-        .Range("A1").Font.Size = 14
-        
-        .Range("A3:G3").Merge
-        .Range("A3").Value = "SETTINGS"
-        .Range("A3").Font.Bold = True
-        
-        .Range("A4").Value = "Sender Email Address"
-        .Range("A5").Value = "Date From"
-        .Range("A6").Value = "Date To"
-        .Range("A7").Value = "Save Folder Path"
-        .Range("A8").Value = "Outlook Folder Name"
-        
-        .Range("C8").Value = "Inbox"
-        
-        .Range("A10:G10").Merge
-        .Range("A10").Value = "HOW TO USE"
-        .Range("A10").Font.Bold = True
-        
-        .Range("A11").Value = "Step 1"
-        .Range("C11").Value = "Enter sender email"
-        
-        .Range("A12").Value = "Step 2"
-        .Range("C12").Value = "Enter date range"
-        
-        .Range("A13").Value = "Step 3"
-        .Range("C13").Value = "Select save folder"
-        
-        .Range("A14").Value = "Step 4"
-        .Range("C14").Value = "Run download macro"
-        
-        .Range("A20:G20").Merge
-        .Range("A20").Value = "STATUS"
-        .Range("A20").Font.Bold = True
-        
-        .Range("A21").Value = "Last Run Status"
-        .Range("A22").Value = "Files Downloaded"
-        .Range("A23").Value = "Last Run Time"
-        .Range("A24").Value = "Execution Time"
-        
-        .Columns("A:G").AutoFit
-        
-    End With
-    
-    '-----------------------------------
-    ' Log Sheet
-    '-----------------------------------
-    Set wsLog = newWB.Sheets.Add(After:=wsDash)
-    wsLog.Name = "Download Log"
-    
-    With wsLog
-        .Range("A1").Value = "#"
-        .Range("B1").Value = "Timestamp"
-        .Range("C1").Value = "Email Subject"
-        .Range("D1").Value = "Sender"
-        .Range("E1").Value = "File Name"
-        .Range("F1").Value = "Status"
-        .Range("G1").Value = "Save Path"
-        
-        .Rows(1).Font.Bold = True
-        .Columns("A:G").AutoFit
-    End With
-    
-    '-----------------------------------
-    ' Add VBA Module
-    '-----------------------------------
-    Set vbProj = newWB.VBProject
-    Set vbComp = vbProj.VBComponents.Add(1)
-    Set codeMod = vbComp.CodeModule
-    
-    codeMod.AddFromString _
-    "Sub BrowseFolder()" & vbCrLf & _
-    "Dim fd As FileDialog" & vbCrLf & _
-    "Set fd = Application.FileDialog(msoFileDialogFolderPicker)" & vbCrLf & _
-    "If fd.Show = -1 Then Sheets(""Dashboard"").Range(""C7"").Value = fd.SelectedItems(1)" & vbCrLf & _
-    "End Sub"
-    
-    codeMod.AddFromString _
-    "Sub DownloadPDFs()" & vbCrLf & _
-    "MsgBox ""Download logic module inserted successfully. Add your final Outlook extraction logic here."", vbInformation" & vbCrLf & _
-    "End Sub"
-    
-    '-----------------------------------
-    ' Save file
-    '-----------------------------------
-    savePath = Application.GetSaveAsFilename( _
-        FileFilter:="Excel Macro-Enabled Workbook (*.xlsm), *.xlsm")
-    
-    If savePath <> "False" Then
-        newWB.SaveAs savePath, FileFormat:=52
-        MsgBox "New Outlook PDF Downloader file created successfully.", vbInformation
-    Else
-        MsgBox "File creation cancelled."
+    If IsDate(dt) Then
+        Sheets("Dashboard").Range("C5").Value = CDate(dt)
     End If
-    
-    Application.ScreenUpdating = True
-    Application.DisplayAlerts = True
+End Sub
+
+Sub PickDateTo()
+    Dim dt As Variant
+    dt = Application.InputBox("Enter To Date (dd/mm/yyyy)", Type:=2)
+
+    If IsDate(dt) Then
+        Sheets("Dashboard").Range("C6").Value = CDate(dt)
+    End If
+End Sub
+
+Sub BrowseFolder()
+
+    Dim fd As FileDialog
+
+    Set fd = Application.FileDialog(msoFileDialogFolderPicker)
+
+    If fd.Show = -1 Then
+        Sheets("Dashboard").Range("C7").Value = fd.SelectedItems(1)
+    End If
+
+End Sub
+
+Sub DownloadPDFs()
+
+    Dim olApp As Object
+    Dim ns As Object
+    Dim inbox As Object
+    Dim items As Object
+    Dim filtered As Object
+    Dim mail As Object
+    Dim att As Object
+
+    Dim ws As Worksheet
+    Dim logWs As Worksheet
+
+    Dim senderEmail As String
+    Dim savePath As String
+    Dim fromDt As Date
+    Dim toDt As Date
+    Dim folderName As String
+
+    Dim filter As String
+    Dim lastRow As Long
+    Dim fileCount As Long
+    Dim startTime As Double
+
+    On Error GoTo ErrorHandler
+
+    startTime = Timer
+
+    Set ws = Sheets("Dashboard")
+    Set logWs = Sheets("Download Log")
+
+    senderEmail = Trim(ws.Range("C4").Value)
+    fromDt = ws.Range("C5").Value
+    toDt = ws.Range("C6").Value
+    savePath = Trim(ws.Range("C7").Value)
+    folderName = Trim(ws.Range("C8").Value)
+
+    If Right(savePath, 1) <> "\" Then
+        savePath = savePath & "\"
+    End If
+
+    On Error Resume Next
+    Set olApp = GetObject(, "Outlook.Application")
+
+    If olApp Is Nothing Then
+        Set olApp = CreateObject("Outlook.Application")
+    End If
+    On Error GoTo ErrorHandler
+
+    Set ns = olApp.GetNamespace("MAPI")
+    Set inbox = ns.GetDefaultFolder(6)
+
+    If folderName <> "" And LCase(folderName) <> "inbox" Then
+        Set inbox = inbox.Folders(folderName)
+    End If
+
+    Set items = inbox.Items
+    items.Sort "[ReceivedTime]", True
+
+    filter = "[ReceivedTime] >= '" & _
+             Format(fromDt, "mm/dd/yyyy hh:mm AMPM") & _
+             "' AND [ReceivedTime] <= '" & _
+             Format(toDt + 1, "mm/dd/yyyy hh:mm AMPM") & "'"
+
+    Set filtered = items.Restrict(filter)
+
+    fileCount = 0
+
+    For Each mail In filtered
+
+        If TypeName(mail) = "MailItem" Then
+
+            If InStr(1, LCase(mail.SenderEmailAddress), _
+            LCase(senderEmail)) > 0 Then
+
+                If mail.Attachments.Count > 0 Then
+
+                    For Each att In mail.Attachments
+
+                        If LCase(Right(att.FileName, 4)) = ".pdf" Then
+
+                            Dim finalPath As String
+
+                            finalPath = savePath & _
+                            Format(Now, "yyyymmdd_hhnnss_") & _
+                            att.FileName
+
+                            att.SaveAsFile finalPath
+
+                            fileCount = fileCount + 1
+
+                            lastRow = logWs.Cells(logWs.Rows.Count, 1).End(xlUp).Row + 1
+
+                            logWs.Cells(lastRow, 1).Value = lastRow - 1
+                            logWs.Cells(lastRow, 2).Value = Now
+                            logWs.Cells(lastRow, 3).Value = mail.Subject
+                            logWs.Cells(lastRow, 4).Value = mail.SenderEmailAddress
+                            logWs.Cells(lastRow, 5).Value = att.FileName
+                            logWs.Cells(lastRow, 6).Value = "Downloaded"
+                            logWs.Cells(lastRow, 7).Value = finalPath
+
+                        End If
+
+                    Next att
+
+                End If
+
+            End If
+
+        End If
+
+    Next mail
+
+    ws.Range("C22").Value = "Success"
+    ws.Range("C23").Value = fileCount
+    ws.Range("C24").Value = Now
+    ws.Range("C25").Value = Round(Timer - startTime, 2) & " Seconds"
+
+    MsgBox fileCount & " PDFs downloaded successfully."
+
+    Exit Sub
+
+ErrorHandler:
+    ws.Range("C22").Value = "Failed"
+    MsgBox Err.Description
 
 End Sub
