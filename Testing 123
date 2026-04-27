@@ -1,240 +1,248 @@
-'==============================================================================
-' PDF ATTACHMENT DOWNLOADER — COMPLETE VBA CODE
-' HOW TO USE:
-'   1. Open Excel → Press ALT+F11 to open VBA Editor
-'   2. Insert → Module
-'   3. Paste ALL this code into the module
-'   4. Run "BuildPDFDownloaderTool" first — it creates the full Excel sheet
-'   5. After that, use the buttons on the sheet to download PDFs
-'==============================================================================
-
 Option Explicit
 
 '==============================================================================
-' MACRO 1 — BUILDER
-' Run this ONCE to create the full Excel interface with all buttons
+' MACRO 1 - RUN THIS FIRST
+' Creates a brand new separate Excel .xlsm file with everything built in
 '==============================================================================
-Sub BuildPDFDownloaderTool()
+Sub CreatePDFDownloaderFile()
 
-    Dim ws      As Worksheet
-    Dim logWs   As Worksheet
-    Dim wb      As Workbook
-    Set wb = ThisWorkbook
+    Dim newWB    As Workbook
+    Dim ws       As Worksheet
+    Dim logWs    As Worksheet
+    Dim savePath As String
+
+    ' Ask user where to save the new file
+    savePath = Application.GetSaveAsFilename( _
+        InitialFileName:="PDF_Downloader", _
+        FileFilter:="Excel Macro-Enabled Workbook (*.xlsm), *.xlsm", _
+        Title:="Save New PDF Downloader File As...")
+
+    If savePath = "False" Then
+        MsgBox "Cancelled. No file was created.", vbInformation
+        Exit Sub
+    End If
+
+    ' Create brand new workbook
+    Set newWB = Workbooks.Add
 
     Application.DisplayAlerts = False
-    On Error Resume Next
-    wb.Sheets("PDF Downloader").Delete
-    wb.Sheets("Download Log").Delete
-    On Error GoTo 0
+    Do While newWB.Sheets.Count > 1
+        newWB.Sheets(newWB.Sheets.Count).Delete
+    Loop
     Application.DisplayAlerts = True
 
-    Set ws = wb.Sheets.Add(Before:=wb.Sheets(1))
+    Set ws = newWB.Sheets(1)
     ws.Name = "PDF Downloader"
-    Set logWs = wb.Sheets.Add(After:=ws)
+    Set logWs = newWB.Sheets.Add(After:=ws)
     logWs.Name = "Download Log"
 
-    ws.Columns("A").ColumnWidth = 3
-    ws.Columns("B").ColumnWidth = 28
-    ws.Columns("C").ColumnWidth = 32
-    ws.Columns("D").ColumnWidth = 3
+    ' Column widths
+    ws.Columns("A").ColumnWidth = 2
+    ws.Columns("B").ColumnWidth = 26
+    ws.Columns("C").ColumnWidth = 33
+    ws.Columns("D").ColumnWidth = 14
+    ws.Columns("E").ColumnWidth = 2
 
     Dim r As Long
-    For r = 1 To 30
+    For r = 1 To 35
         ws.Rows(r).RowHeight = 24
     Next r
 
     ' Title
-    ws.Rows(1).RowHeight = 36
-    With ws.Range("A1:D1")
+    ws.Rows(1).RowHeight = 40
+    With ws.Range("A1:E1")
         .Merge
         .Value = "   OUTLOOK PDF ATTACHMENT DOWNLOADER"
         .Font.Name = "Arial" : .Font.Bold = True
-        .Font.Size = 13 : .Font.Color = RGB(255, 255, 255)
+        .Font.Size = 14 : .Font.Color = RGB(255, 255, 255)
         .Interior.Color = RGB(31, 78, 121)
         .HorizontalAlignment = xlCenter : .VerticalAlignment = xlCenter
     End With
 
-    Call FormatHeader(ws.Range("A3:D3"), "  SETTINGS")
+    ws.Rows(2).RowHeight = 8
+    Call MakeHeader(ws.Range("A3:E3"), "  SETTINGS")
 
-    Dim settings As Variant
-    settings = Array( _
-        Array(4, "Sender Email Address",  "scanner@yourcompany.com"), _
-        Array(5, "Date From",             ""), _
-        Array(6, "Date To",               ""), _
-        Array(7, "Save Folder Path",      "C:\ScannedPDFs\"), _
-        Array(8, "Outlook Folder Name",   "Inbox") _
-    )
+    ' Input rows
+    Call MakeLabel(ws.Cells(4, 2), "Sender Email Address")
+    Call MakeInput(ws.Cells(4, 3), "scanner@yourcompany.com")
 
-    Dim i As Integer
-    For i = 0 To UBound(settings)
-        Dim rowN As Long : rowN = settings(i)(0)
-        With ws.Cells(rowN, 2)
-            .Value = settings(i)(1)
-            .Font.Name = "Arial" : .Font.Bold = True
-            .Font.Size = 10 : .Font.Color = RGB(31, 78, 121)
-            .HorizontalAlignment = xlLeft : .VerticalAlignment = xlCenter
-            Call ApplyBorder(.Cells)
-        End With
-        With ws.Cells(rowN, 3)
-            .Value = settings(i)(2)
-            .Font.Name = "Arial" : .Font.Size = 10
-            .Interior.Color = RGB(255, 242, 204)
-            .HorizontalAlignment = xlLeft : .VerticalAlignment = xlCenter
-            Call ApplyBorder(.Cells)
-        End With
-    Next i
+    Call MakeLabel(ws.Cells(5, 2), "Date From")
+    Call MakeInput(ws.Cells(5, 3), "")
+    ws.Cells(5, 3).NumberFormat = "DD/MM/YYYY"
 
-    ' Date picker buttons
-    Dim btnFrom As Button
-    Set btnFrom = ws.Buttons.Add( _
-        ws.Cells(5, 3).Left + ws.Cells(5, 3).Width - 85, _
-        ws.Cells(5, 3).Top + 1, 82, 20)
-    With btnFrom
+    Call MakeLabel(ws.Cells(6, 2), "Date To")
+    Call MakeInput(ws.Cells(6, 3), "")
+    ws.Cells(6, 3).NumberFormat = "DD/MM/YYYY"
+
+    Call MakeLabel(ws.Cells(7, 2), "Save Folder Path")
+    Call MakeInput(ws.Cells(7, 3), "")
+
+    Call MakeLabel(ws.Cells(8, 2), "Outlook Folder Name")
+    Call MakeInput(ws.Cells(8, 3), "Inbox")
+
+    ws.Rows(9).RowHeight = 8
+
+    ' Pick Date From button
+    Dim btnCal1 As Button
+    Set btnCal1 = ws.Buttons.Add( _
+        ws.Cells(5, 4).Left + 1, ws.Cells(5, 4).Top + 2, _
+        ws.Cells(5, 4).Width - 2, ws.Cells(5, 4).Height - 4)
+    With btnCal1
         .Caption = "Pick Date"
-        .OnAction = "PickDateFrom"
-        .Font.Name = "Arial" : .Font.Size = 8 : .Font.Bold = True
+        .OnAction = "ShowCalendarFrom"
+        .Font.Name = "Arial" : .Font.Size = 9 : .Font.Bold = True
     End With
 
-    Dim btnTo As Button
-    Set btnTo = ws.Buttons.Add( _
-        ws.Cells(6, 3).Left + ws.Cells(6, 3).Width - 85, _
-        ws.Cells(6, 3).Top + 1, 82, 20)
-    With btnTo
+    ' Pick Date To button
+    Dim btnCal2 As Button
+    Set btnCal2 = ws.Buttons.Add( _
+        ws.Cells(6, 4).Left + 1, ws.Cells(6, 4).Top + 2, _
+        ws.Cells(6, 4).Width - 2, ws.Cells(6, 4).Height - 4)
+    With btnCal2
         .Caption = "Pick Date"
-        .OnAction = "PickDateTo"
-        .Font.Name = "Arial" : .Font.Size = 8 : .Font.Bold = True
+        .OnAction = "ShowCalendarTo"
+        .Font.Name = "Arial" : .Font.Size = 9 : .Font.Bold = True
     End With
 
-    Call FormatHeader(ws.Range("A10:D10"), "  HOW TO USE")
-
-    Dim steps As Variant
-    steps = Array( _
-        Array(11, "Step 1", "Fill in all yellow cells above with your details"), _
-        Array(12, "Step 2", "Click 'Pick Date' next to Date From"), _
-        Array(13, "Step 3", "Click 'Pick Date' next to Date To"), _
-        Array(14, "Step 4", "Click the 'DOWNLOAD PDFs' button below"), _
-        Array(15, "Step 5", "Check the 'Download Log' sheet for results") _
-    )
-
-    For i = 0 To UBound(steps)
-        rowN = steps(i)(0)
-        With ws.Cells(rowN, 2)
-            .Value = steps(i)(1)
-            .Font.Name = "Arial" : .Font.Bold = True : .Font.Size = 9
-            .Font.Color = RGB(31, 78, 121)
-            .HorizontalAlignment = xlLeft : .VerticalAlignment = xlCenter
-            Call ApplyBorder(.Cells)
-        End With
-        With ws.Cells(rowN, 3)
-            .Value = steps(i)(2)
-            .Font.Name = "Arial" : .Font.Size = 9
-            .Interior.Color = RGB(226, 239, 218)
-            .HorizontalAlignment = xlLeft : .VerticalAlignment = xlCenter
-            Call ApplyBorder(.Cells)
-        End With
-    Next i
+    ' Browse folder button
+    Dim btnBrowse As Button
+    Set btnBrowse = ws.Buttons.Add( _
+        ws.Cells(7, 4).Left + 1, ws.Cells(7, 4).Top + 2, _
+        ws.Cells(7, 4).Width - 2, ws.Cells(7, 4).Height - 4)
+    With btnBrowse
+        .Caption = "Browse..."
+        .OnAction = "BrowseFolder"
+        .Font.Name = "Arial" : .Font.Size = 9 : .Font.Bold = True
+    End With
 
     ' Download button
-    ws.Rows(17).RowHeight = 10
     Dim btnDL As Button
     Set btnDL = ws.Buttons.Add( _
-        ws.Cells(18, 2).Left, ws.Cells(18, 2).Top, _
-        ws.Cells(18, 3).Left + ws.Cells(18, 3).Width - ws.Cells(18, 2).Left, 32)
+        ws.Cells(10, 2).Left, ws.Cells(10, 2).Top + 2, _
+        ws.Cells(10, 3).Left + ws.Cells(10, 3).Width - ws.Cells(10, 2).Left, 36)
     With btnDL
-        .Caption = "DOWNLOAD PDFs FROM OUTLOOK"
+        .Caption = "  DOWNLOAD PDFs FROM OUTLOOK"
         .OnAction = "DownloadPDFAttachments"
-        .Font.Name = "Arial" : .Font.Size = 11 : .Font.Bold = True
+        .Font.Name = "Arial" : .Font.Size = 12 : .Font.Bold = True
     End With
-    ws.Rows(18).RowHeight = 36
-    ws.Rows(19).RowHeight = 10
+    ws.Rows(10).RowHeight = 40
+    ws.Rows(11).RowHeight = 8
 
-    Call FormatHeader(ws.Range("A20:D20"), "  STATUS")
+    ' Status section
+    Call MakeHeader(ws.Range("A12:E12"), "  STATUS")
+    Call MakeLabel(ws.Cells(13, 2), "Last Run Status")
+    Call MakeOutput(ws.Cells(13, 3), "Not yet run")
+    Call MakeLabel(ws.Cells(14, 2), "Files Downloaded")
+    Call MakeOutput(ws.Cells(14, 3), "0")
+    Call MakeLabel(ws.Cells(15, 2), "Last Run Time")
+    Call MakeOutput(ws.Cells(15, 3), "")
 
-    Dim statusRows As Variant
-    statusRows = Array( _
-        Array(21, "Last Run Status",  "Not yet run"), _
-        Array(22, "Files Downloaded", "0"), _
-        Array(23, "Last Run Time",    "") _
-    )
+    ws.Rows(16).RowHeight = 8
+    Call MakeHeader(ws.Range("A17:E17"), "  IMPORTANT NOTES")
 
-    For i = 0 To UBound(statusRows)
-        rowN = statusRows(i)(0)
-        With ws.Cells(rowN, 2)
-            .Value = statusRows(i)(1)
-            .Font.Name = "Arial" : .Font.Bold = True : .Font.Size = 9
-            .Font.Color = RGB(31, 78, 121)
-            .HorizontalAlignment = xlLeft : .VerticalAlignment = xlCenter
-            Call ApplyBorder(.Cells)
-        End With
-        With ws.Cells(rowN, 3)
-            .Value = statusRows(i)(2)
-            .Font.Name = "Arial" : .Font.Size = 9
-            .Interior.Color = RGB(226, 239, 218)
-            .HorizontalAlignment = xlLeft : .VerticalAlignment = xlCenter
-            Call ApplyBorder(.Cells)
-        End With
-    Next i
-
-    Call FormatHeader(ws.Range("A25:D25"), "  IMPORTANT NOTES")
-
-    Dim notesList As Variant
-    notesList = Array( _
-        "If Outlook is closed, the macro will open it automatically", _
+    Dim notes As Variant
+    notes = Array( _
+        "Outlook will open automatically if it is currently closed", _
         "Only .PDF attachments are downloaded — other files are skipped", _
-        "Make sure the Save Folder path exists on your PC before running", _
-        "Password-protected PDFs are downloaded as-is (not opened)", _
-        "Check 'Download Log' sheet after each run for full details" _
-    )
+        "Create the Save Folder on your PC before running the macro", _
+        "Password-protected PDFs are downloaded as normal files", _
+        "Outlook Folder Name must match exactly as it appears in Outlook", _
+        "Check the 'Download Log' sheet after each run for full details")
 
-    For i = 0 To UBound(notesList)
-        rowN = 26 + i
-        ws.Range(ws.Cells(rowN, 2), ws.Cells(rowN, 3)).Merge
-        With ws.Cells(rowN, 2)
-            .Value = Chr(149) & "  " & notesList(i)
+    Dim n As Integer
+    For n = 0 To UBound(notes)
+        ws.Range(ws.Cells(18 + n, 2), ws.Cells(18 + n, 4)).Merge
+        With ws.Cells(18 + n, 2)
+            .Value = Chr(149) & "  " & notes(n)
             .Font.Name = "Arial" : .Font.Size = 9
             .Font.Color = RGB(127, 0, 0)
+            .Interior.Color = RGB(255, 235, 235)
             .HorizontalAlignment = xlLeft : .VerticalAlignment = xlCenter
             Call ApplyBorder(.Cells)
         End With
-        ws.Rows(rowN).RowHeight = 20
-    Next i
+        ws.Rows(18 + n).RowHeight = 20
+    Next n
 
     ' Log sheet headers
-    Dim logHdrs As Variant
-    Dim logW    As Variant
-    logHdrs = Array("#", "Timestamp", "Email Subject", "Sender", "File Name", "Status", "Save Path")
-    logW    = Array(5, 22, 40, 30, 35, 12, 45)
-
-    For i = 0 To UBound(logHdrs)
-        With logWs.Cells(1, i + 1)
-            .Value = logHdrs(i)
-            .Font.Name = "Arial" : .Font.Bold = True : .Font.Size = 10
-            .Font.Color = RGB(255, 255, 255)
+    Dim lh As Variant, lw As Variant
+    lh = Array("#", "Timestamp", "Email Subject", "Sender Email", "File Name", "Status", "Full Save Path")
+    lw = Array(5, 22, 42, 32, 36, 14, 48)
+    Dim h As Integer
+    For h = 0 To UBound(lh)
+        With logWs.Cells(1, h + 1)
+            .Value = lh(h)
+            .Font.Name = "Arial" : .Font.Bold = True
+            .Font.Size = 10 : .Font.Color = RGB(255, 255, 255)
             .Interior.Color = RGB(31, 78, 121)
             .HorizontalAlignment = xlCenter : .VerticalAlignment = xlCenter
             Call ApplyBorder(.Cells)
         End With
-        logWs.Columns(i + 1).ColumnWidth = logW(i)
-    Next i
-    logWs.Rows(1).RowHeight = 24
+        logWs.Columns(h + 1).ColumnWidth = lw(h)
+    Next h
+    logWs.Rows(1).RowHeight = 26
+    logWs.Tab.Color = RGB(31, 78, 121)
+    ws.Tab.Color = RGB(31, 78, 121)
 
+    ' Inject all macros into the new workbook
+    Dim vbComp As Object
+    Set vbComp = newWB.VBProject.VBComponents.Add(1)
+    vbComp.Name = "PDFDownloaderMacros"
+    vbComp.CodeModule.AddFromString GetMacroCode()
+
+    ' Save the new file
+    Application.DisplayAlerts = False
+    newWB.SaveAs Filename:=savePath, FileFormat:=52
+    Application.DisplayAlerts = True
+
+    MsgBox "New file created successfully!" & vbNewLine & vbNewLine & _
+           "Saved to: " & savePath & vbNewLine & vbNewLine & _
+           "Open the new file, fill the yellow cells and click DOWNLOAD.", _
+           vbInformation, "PDF Downloader Created"
+
+    newWB.Activate
     ws.Activate
-
-    MsgBox "PDF Downloader tool created successfully!" & vbNewLine & _
-           "Fill in the yellow cells and click DOWNLOAD PDFs.", _
-           vbInformation, "Setup Complete"
 End Sub
 
 '==============================================================================
-' HELPERS
+' FORMATTING HELPERS
 '==============================================================================
-Private Sub FormatHeader(rng As Range, title As String)
+Private Sub MakeHeader(rng As Range, title As String)
     rng.Merge
     With rng
         .Value = title
         .Font.Name = "Arial" : .Font.Bold = True
         .Font.Size = 11 : .Font.Color = RGB(255, 255, 255)
         .Interior.Color = RGB(31, 78, 121)
+        .HorizontalAlignment = xlLeft : .VerticalAlignment = xlCenter
+        Call ApplyBorder(.Cells)
+    End With
+End Sub
+
+Private Sub MakeLabel(cel As Range, txt As String)
+    With cel
+        .Value = txt
+        .Font.Name = "Arial" : .Font.Bold = True
+        .Font.Size = 10 : .Font.Color = RGB(31, 78, 121)
+        .HorizontalAlignment = xlLeft : .VerticalAlignment = xlCenter
+        Call ApplyBorder(.Cells)
+    End With
+End Sub
+
+Private Sub MakeInput(cel As Range, defaultVal As String)
+    With cel
+        .Value = defaultVal
+        .Font.Name = "Arial" : .Font.Size = 10
+        .Interior.Color = RGB(255, 242, 204)
+        .HorizontalAlignment = xlLeft : .VerticalAlignment = xlCenter
+        Call ApplyBorder(.Cells)
+    End With
+End Sub
+
+Private Sub MakeOutput(cel As Range, defaultVal As String)
+    With cel
+        .Value = defaultVal
+        .Font.Name = "Arial" : .Font.Size = 10
+        .Interior.Color = RGB(226, 239, 218)
         .HorizontalAlignment = xlLeft : .VerticalAlignment = xlCenter
         Call ApplyBorder(.Cells)
     End With
@@ -249,207 +257,218 @@ Private Sub ApplyBorder(rng As Range)
 End Sub
 
 '==============================================================================
-' MACRO 2 — DATE PICKERS
+' ALL MACROS INJECTED INTO THE NEW FILE
 '==============================================================================
-Sub PickDateFrom()
-    Dim d As String
-    d = InputBox("Enter Date From (DD/MM/YYYY):", "Select Start Date", _
-                 Format(Date, "DD/MM/YYYY"))
-    If d <> "" Then
-        If IsDate(d) Then
-            ThisWorkbook.Sheets("PDF Downloader").Cells(5, 3).Value = CDate(d)
-            ThisWorkbook.Sheets("PDF Downloader").Cells(5, 3).NumberFormat = "DD/MM/YYYY"
-        Else
-            MsgBox "Invalid date. Please use DD/MM/YYYY format.", vbExclamation
-        End If
-    End If
-End Sub
+Private Function GetMacroCode() As String
+    Dim c As String
 
-Sub PickDateTo()
-    Dim d As String
-    d = InputBox("Enter Date To (DD/MM/YYYY):", "Select End Date", _
-                 Format(Date, "DD/MM/YYYY"))
-    If d <> "" Then
-        If IsDate(d) Then
-            ThisWorkbook.Sheets("PDF Downloader").Cells(6, 3).Value = CDate(d)
-            ThisWorkbook.Sheets("PDF Downloader").Cells(6, 3).NumberFormat = "DD/MM/YYYY"
-        Else
-            MsgBox "Invalid date. Please use DD/MM/YYYY format.", vbExclamation
-        End If
-    End If
-End Sub
+    c = c & "Option Explicit" & vbNewLine
+    c = c & "" & vbNewLine
 
-'==============================================================================
-' MACRO 3 — MAIN DOWNLOAD
-'==============================================================================
-Sub DownloadPDFAttachments()
+    c = c & "Sub ShowCalendarFrom()" & vbNewLine
+    c = c & "    ShowCalendar 5" & vbNewLine
+    c = c & "End Sub" & vbNewLine
+    c = c & "" & vbNewLine
 
-    Dim ws As Worksheet
-    Set ws = ThisWorkbook.Sheets("PDF Downloader")
+    c = c & "Sub ShowCalendarTo()" & vbNewLine
+    c = c & "    ShowCalendar 6" & vbNewLine
+    c = c & "End Sub" & vbNewLine
+    c = c & "" & vbNewLine
 
-    Dim senderEmail  As String : senderEmail  = Trim(ws.Cells(4, 3).Value)
-    Dim savePath     As String : savePath     = Trim(ws.Cells(7, 3).Value)
-    Dim olFolderName As String : olFolderName = Trim(ws.Cells(8, 3).Value)
-    Dim dateFrom     As Date
-    Dim dateTo       As Date
+    c = c & "Sub ShowCalendar(targetRow As Integer)" & vbNewLine
+    c = c & "    Dim ws As Worksheet" & vbNewLine
+    c = c & "    Set ws = ThisWorkbook.Sheets(""PDF Downloader"")" & vbNewLine
+    c = c & "    Dim currentDate As Date" & vbNewLine
+    c = c & "    If IsDate(ws.Cells(targetRow, 3).Value) Then" & vbNewLine
+    c = c & "        currentDate = CDate(ws.Cells(targetRow, 3).Value)" & vbNewLine
+    c = c & "    Else" & vbNewLine
+    c = c & "        currentDate = Date" & vbNewLine
+    c = c & "    End If" & vbNewLine
+    c = c & "    Dim picked As String" & vbNewLine
+    c = c & "    Dim prompt As String" & vbNewLine
+    c = c & "    prompt = BuildCalendarPrompt(Year(currentDate), Month(currentDate))" & vbNewLine
+    c = c & "    Do" & vbNewLine
+    c = c & "        picked = InputBox(prompt, ""Select Date (DD/MM/YYYY)"", Format(currentDate, ""DD/MM/YYYY""))" & vbNewLine
+    c = c & "        If picked = """" Then Exit Sub" & vbNewLine
+    c = c & "        If IsDate(picked) Then Exit Do" & vbNewLine
+    c = c & "        MsgBox ""Please enter a valid date in DD/MM/YYYY format."" & vbNewLine & ""Example: 01/04/2026"", vbExclamation, ""Invalid Date""" & vbNewLine
+    c = c & "    Loop" & vbNewLine
+    c = c & "    ws.Cells(targetRow, 3).Value = CDate(picked)" & vbNewLine
+    c = c & "    ws.Cells(targetRow, 3).NumberFormat = ""DD/MM/YYYY""" & vbNewLine
+    c = c & "End Sub" & vbNewLine
+    c = c & "" & vbNewLine
 
-    ' Validate
-    If senderEmail = "" Then
-        MsgBox "Please enter Sender Email Address in cell C4.", vbExclamation : Exit Sub
-    End If
-    If Not IsDate(ws.Cells(5, 3).Value) Then
-        MsgBox "Please enter a valid Date From in cell C5.", vbExclamation : Exit Sub
-    End If
-    If Not IsDate(ws.Cells(6, 3).Value) Then
-        MsgBox "Please enter a valid Date To in cell C6.", vbExclamation : Exit Sub
-    End If
+    c = c & "Function BuildCalendarPrompt(yr As Integer, mo As Integer) As String" & vbNewLine
+    c = c & "    Dim p As String" & vbNewLine
+    c = c & "    Dim monthNames As Variant" & vbNewLine
+    c = c & "    monthNames = Array("""",""January"",""February"",""March"",""April"",""May"",""June"",""July"",""August"",""September"",""October"",""November"",""December"")" & vbNewLine
+    c = c & "    p = ""  === "" & monthNames(mo) & "" "" & yr & "" ==="" & vbNewLine" & vbNewLine
+    c = c & "    p = p & ""  Sun  Mon  Tue  Wed  Thu  Fri  Sat"" & vbNewLine" & vbNewLine
+    c = c & "    p = p & String(38, ""-"") & vbNewLine" & vbNewLine
+    c = c & "    Dim firstDay As Integer : firstDay = Weekday(DateSerial(yr, mo, 1), vbSunday)" & vbNewLine
+    c = c & "    Dim daysInMonth As Integer : daysInMonth = Day(DateSerial(yr, mo + 1, 0))" & vbNewLine
+    c = c & "    Dim col As Integer : col = 1" & vbNewLine
+    c = c & "    Dim line As String : line = """"" & vbNewLine
+    c = c & "    Dim d As Integer" & vbNewLine
+    c = c & "    For d = 1 To firstDay - 1 : line = line & ""     "" : col = col + 1 : Next d" & vbNewLine
+    c = c & "    For d = 1 To daysInMonth" & vbNewLine
+    c = c & "        line = line & Right(""    "" & d, 4) & "" """ & vbNewLine
+    c = c & "        col = col + 1" & vbNewLine
+    c = c & "        If col > 7 Then : p = p & line & vbNewLine : line = """" : col = 1 : End If" & vbNewLine
+    c = c & "    Next d" & vbNewLine
+    c = c & "    If line <> """" Then p = p & line & vbNewLine" & vbNewLine
+    c = c & "    p = p & String(38, ""-"") & vbNewLine" & vbNewLine
+    c = c & "    p = p & ""Type the date below in DD/MM/YYYY format:""" & vbNewLine
+    c = c & "    BuildCalendarPrompt = p" & vbNewLine
+    c = c & "End Function" & vbNewLine
+    c = c & "" & vbNewLine
 
-    dateFrom = CDate(ws.Cells(5, 3).Value)
-    dateTo   = CDate(ws.Cells(6, 3).Value)
+    c = c & "Sub BrowseFolder()" & vbNewLine
+    c = c & "    Dim ws As Worksheet" & vbNewLine
+    c = c & "    Set ws = ThisWorkbook.Sheets(""PDF Downloader"")" & vbNewLine
+    c = c & "    Dim shellApp As Object" & vbNewLine
+    c = c & "    Set shellApp = CreateObject(""Shell.Application"")" & vbNewLine
+    c = c & "    Dim folder As Object" & vbNewLine
+    c = c & "    Set folder = shellApp.BrowseForFolder(0, ""Select folder to save PDFs:"", 0, ""C:\"")" & vbNewLine
+    c = c & "    If Not folder Is Nothing Then" & vbNewLine
+    c = c & "        Dim fp As String : fp = folder.Self.Path" & vbNewLine
+    c = c & "        If Right(fp, 1) <> ""\"" Then fp = fp & ""\""" & vbNewLine
+    c = c & "        ws.Cells(7, 3).Value = fp" & vbNewLine
+    c = c & "    End If" & vbNewLine
+    c = c & "End Sub" & vbNewLine
+    c = c & "" & vbNewLine
 
-    If dateFrom > dateTo Then
-        MsgBox "Date From cannot be later than Date To.", vbExclamation : Exit Sub
-    End If
-    If savePath = "" Then
-        MsgBox "Please enter Save Folder Path in cell C7.", vbExclamation : Exit Sub
-    End If
-    If Right(savePath, 1) <> "\" Then savePath = savePath & "\"
-    If Dir(savePath, vbDirectory) = "" Then
-        MsgBox "Save folder not found: " & savePath & vbNewLine & _
-               "Please create this folder first.", vbExclamation
-        Exit Sub
-    End If
+    c = c & "Sub DownloadPDFAttachments()" & vbNewLine
+    c = c & "    Dim ws As Worksheet" & vbNewLine
+    c = c & "    Set ws = ThisWorkbook.Sheets(""PDF Downloader"")" & vbNewLine
+    c = c & "    Dim senderEmail  As String : senderEmail  = Trim(ws.Cells(4, 3).Value)" & vbNewLine
+    c = c & "    Dim savePath     As String : savePath     = Trim(ws.Cells(7, 3).Value)" & vbNewLine
+    c = c & "    Dim olFolderName As String : olFolderName = Trim(ws.Cells(8, 3).Value)" & vbNewLine
+    c = c & "    Dim dateFrom As Date" & vbNewLine
+    c = c & "    Dim dateTo   As Date" & vbNewLine
+    c = c & "    If senderEmail = """" Then MsgBox ""Please enter Sender Email Address."", vbExclamation : Exit Sub" & vbNewLine
+    c = c & "    If Not IsDate(ws.Cells(5, 3).Value) Then MsgBox ""Please click Pick Date for Date From."", vbExclamation : Exit Sub" & vbNewLine
+    c = c & "    If Not IsDate(ws.Cells(6, 3).Value) Then MsgBox ""Please click Pick Date for Date To."", vbExclamation : Exit Sub" & vbNewLine
+    c = c & "    dateFrom = CDate(ws.Cells(5, 3).Value)" & vbNewLine
+    c = c & "    dateTo   = CDate(ws.Cells(6, 3).Value)" & vbNewLine
+    c = c & "    If dateFrom > dateTo Then MsgBox ""Date From cannot be later than Date To."", vbExclamation : Exit Sub" & vbNewLine
+    c = c & "    If savePath = """" Then MsgBox ""Please click Browse to select a Save Folder."", vbExclamation : Exit Sub" & vbNewLine
+    c = c & "    If Right(savePath, 1) <> ""\"" Then savePath = savePath & ""\""" & vbNewLine
+    c = c & "    If Dir(savePath, vbDirectory) = """" Then" & vbNewLine
+    c = c & "        MsgBox ""Folder not found: "" & savePath & vbNewLine & ""Please create it or click Browse."", vbExclamation : Exit Sub" & vbNewLine
+    c = c & "    End If" & vbNewLine
+    c = c & "    Dim olApp As Object" & vbNewLine
+    c = c & "    On Error Resume Next" & vbNewLine
+    c = c & "    Set olApp = GetObject(, ""Outlook.Application"")" & vbNewLine
+    c = c & "    On Error GoTo 0" & vbNewLine
+    c = c & "    If olApp Is Nothing Then" & vbNewLine
+    c = c & "        Application.StatusBar = ""Opening Outlook, please wait...""" & vbNewLine
+    c = c & "        On Error GoTo ErrOutlook" & vbNewLine
+    c = c & "        Set olApp = CreateObject(""Outlook.Application"")" & vbNewLine
+    c = c & "        Application.Wait Now + TimeValue(""0:00:04"")" & vbNewLine
+    c = c & "        On Error GoTo 0" & vbNewLine
+    c = c & "    End If" & vbNewLine
+    c = c & "    Dim olNS As Object : Set olNS = olApp.GetNamespace(""MAPI"")" & vbNewLine
+    c = c & "    olNS.Logon" & vbNewLine
+    c = c & "    Dim olFolder As Object" & vbNewLine
+    c = c & "    On Error Resume Next" & vbNewLine
+    c = c & "    If UCase(Trim(olFolderName)) = ""INBOX"" Or olFolderName = """" Then" & vbNewLine
+    c = c & "        Set olFolder = olNS.GetDefaultFolder(6)" & vbNewLine
+    c = c & "    Else" & vbNewLine
+    c = c & "        Set olFolder = olNS.GetDefaultFolder(6).Folders(olFolderName)" & vbNewLine
+    c = c & "        If olFolder Is Nothing Then" & vbNewLine
+    c = c & "            Dim acct As Object" & vbNewLine
+    c = c & "            For Each acct In olNS.Folders" & vbNewLine
+    c = c & "                Set olFolder = acct.Folders(olFolderName)" & vbNewLine
+    c = c & "                If Not olFolder Is Nothing Then Exit For" & vbNewLine
+    c = c & "            Next acct" & vbNewLine
+    c = c & "        End If" & vbNewLine
+    c = c & "    End If" & vbNewLine
+    c = c & "    On Error GoTo 0" & vbNewLine
+    c = c & "    If olFolder Is Nothing Then" & vbNewLine
+    c = c & "        MsgBox ""Folder not found: '"" & olFolderName & ""'"" & vbNewLine & ""Check the exact name in Outlook."", vbExclamation" & vbNewLine
+    c = c & "        Application.StatusBar = False : Exit Sub" & vbNewLine
+    c = c & "    End If" & vbNewLine
+    c = c & "    Application.StatusBar = ""Filtering emails by date range...""" & vbNewLine
+    c = c & "    Dim filterStr As String" & vbNewLine
+    c = c & "    filterStr = ""[ReceivedTime] >= '"" & Format(dateFrom, ""DD/MM/YYYY"") & "" 00:00 AM'"" & _" & vbNewLine
+    c = c & "                "" AND [ReceivedTime] <= '"" & Format(dateTo, ""DD/MM/YYYY"") & "" 11:59 PM'""" & vbNewLine
+    c = c & "    Dim filteredItems As Object" & vbNewLine
+    c = c & "    Set filteredItems = olFolder.Items.Restrict(filterStr)" & vbNewLine
+    c = c & "    filteredItems.Sort ""[ReceivedTime]"", False" & vbNewLine
+    c = c & "    Dim logWs  As Worksheet : Set logWs = ThisWorkbook.Sheets(""Download Log"")" & vbNewLine
+    c = c & "    Dim logRow As Long" & vbNewLine
+    c = c & "    logRow = logWs.Cells(logWs.Rows.Count, 1).End(xlUp).Row + 1" & vbNewLine
+    c = c & "    If logRow = 2 And logWs.Cells(2, 1).Value = """" Then logRow = 2" & vbNewLine
+    c = c & "    Dim dlCount   As Long : dlCount   = 0" & vbNewLine
+    c = c & "    Dim skipCount As Long : skipCount = 0" & vbNewLine
+    c = c & "    Dim counter   As Long : counter   = 1" & vbNewLine
+    c = c & "    Dim mailItem  As Object" & vbNewLine
+    c = c & "    Dim att       As Object" & vbNewLine
+    c = c & "    For Each mailItem In filteredItems" & vbNewLine
+    c = c & "        If InStr(1, LCase(mailItem.SenderEmailAddress), LCase(senderEmail)) > 0 Then" & vbNewLine
+    c = c & "            Application.StatusBar = ""Processing email "" & counter & "" of "" & filteredItems.Count" & vbNewLine
+    c = c & "            If mailItem.Attachments.Count > 0 Then" & vbNewLine
+    c = c & "                For Each att In mailItem.Attachments" & vbNewLine
+    c = c & "                    If LCase(Right(att.FileName, 4)) = "".pdf"" Then" & vbNewLine
+    c = c & "                        Dim fName    As String : fName    = att.FileName" & vbNewLine
+    c = c & "                        Dim fullPath As String : fullPath = savePath & fName" & vbNewLine
+    c = c & "                        If Dir(fullPath) <> """" Then" & vbNewLine
+    c = c & "                            fName    = Left(fName, Len(fName) - 4) & ""_"" & Format(Now, ""HHMMSS"") & "".pdf""" & vbNewLine
+    c = c & "                            fullPath = savePath & fName" & vbNewLine
+    c = c & "                        End If" & vbNewLine
+    c = c & "                        On Error Resume Next" & vbNewLine
+    c = c & "                        att.SaveAsFile fullPath" & vbNewLine
+    c = c & "                        If Err.Number = 0 Then" & vbNewLine
+    c = c & "                            dlCount = dlCount + 1" & vbNewLine
+    c = c & "                            With logWs" & vbNewLine
+    c = c & "                                .Cells(logRow, 1).Value = logRow - 1" & vbNewLine
+    c = c & "                                .Cells(logRow, 2).Value = Format(Now, ""DD/MM/YYYY HH:MM:SS"")" & vbNewLine
+    c = c & "                                .Cells(logRow, 3).Value = mailItem.Subject" & vbNewLine
+    c = c & "                                .Cells(logRow, 4).Value = mailItem.SenderEmailAddress" & vbNewLine
+    c = c & "                                .Cells(logRow, 5).Value = fName" & vbNewLine
+    c = c & "                                .Cells(logRow, 6).Value = ""Downloaded""" & vbNewLine
+    c = c & "                                .Cells(logRow, 6).Font.Color = RGB(0, 128, 0)" & vbNewLine
+    c = c & "                                .Cells(logRow, 7).Value = fullPath" & vbNewLine
+    c = c & "                                .Range(.Cells(logRow, 1), .Cells(logRow, 7)).Font.Name = ""Arial""" & vbNewLine
+    c = c & "                                .Range(.Cells(logRow, 1), .Cells(logRow, 7)).Font.Size = 9" & vbNewLine
+    c = c & "                            End With" & vbNewLine
+    c = c & "                        Else" & vbNewLine
+    c = c & "                            skipCount = skipCount + 1" & vbNewLine
+    c = c & "                            With logWs" & vbNewLine
+    c = c & "                                .Cells(logRow, 1).Value = logRow - 1" & vbNewLine
+    c = c & "                                .Cells(logRow, 2).Value = Format(Now, ""DD/MM/YYYY HH:MM:SS"")" & vbNewLine
+    c = c & "                                .Cells(logRow, 3).Value = mailItem.Subject" & vbNewLine
+    c = c & "                                .Cells(logRow, 4).Value = mailItem.SenderEmailAddress" & vbNewLine
+    c = c & "                                .Cells(logRow, 5).Value = att.FileName" & vbNewLine
+    c = c & "                                .Cells(logRow, 6).Value = ""FAILED""" & vbNewLine
+    c = c & "                                .Cells(logRow, 6).Font.Color = RGB(200, 0, 0)" & vbNewLine
+    c = c & "                                .Cells(logRow, 7).Value = ""Error: "" & Err.Description" & vbNewLine
+    c = c & "                            End With" & vbNewLine
+    c = c & "                        End If" & vbNewLine
+    c = c & "                        Err.Clear : On Error GoTo 0" & vbNewLine
+    c = c & "                        logRow = logRow + 1" & vbNewLine
+    c = c & "                    End If" & vbNewLine
+    c = c & "                Next att" & vbNewLine
+    c = c & "            End If" & vbNewLine
+    c = c & "        End If" & vbNewLine
+    c = c & "        counter = counter + 1" & vbNewLine
+    c = c & "    Next mailItem" & vbNewLine
+    c = c & "    Application.StatusBar = False" & vbNewLine
+    c = c & "    ws.Cells(13, 3).Value = IIf(dlCount > 0, ""Success - "" & dlCount & "" file(s)"", ""No PDF files found"")" & vbNewLine
+    c = c & "    ws.Cells(13, 3).Font.Color = IIf(dlCount > 0, RGB(0, 128, 0), RGB(200, 0, 0))" & vbNewLine
+    c = c & "    ws.Cells(14, 3).Value = dlCount" & vbNewLine
+    c = c & "    ws.Cells(15, 3).Value = Format(Now, ""DD/MM/YYYY HH:MM:SS"")" & vbNewLine
+    c = c & "    MsgBox ""Download Complete!"" & vbNewLine & vbNewLine & _" & vbNewLine
+    c = c & "           ""Files Downloaded : "" & dlCount & vbNewLine & _" & vbNewLine
+    c = c & "           ""Files Skipped    : "" & skipCount & vbNewLine & _" & vbNewLine
+    c = c & "           ""Saved To         : "" & savePath & vbNewLine & vbNewLine & _" & vbNewLine
+    c = c & "           ""See Download Log sheet for details."", vbInformation, ""Done""" & vbNewLine
+    c = c & "    Exit Sub" & vbNewLine
+    c = c & "ErrOutlook:" & vbNewLine
+    c = c & "    Application.StatusBar = False" & vbNewLine
+    c = c & "    MsgBox ""Could not open Outlook. Please ensure Outlook is installed."", vbCritical, ""Outlook Error""" & vbNewLine
+    c = c & "End Sub" & vbNewLine
 
-    ' Connect to Outlook — open if not running
-    Dim olApp As Object
-    On Error Resume Next
-    Set olApp = GetObject(, "Outlook.Application")
-    On Error GoTo 0
-
-    If olApp Is Nothing Then
-        On Error GoTo ErrOutlook
-        Set olApp = CreateObject("Outlook.Application")
-        Application.Wait Now + TimeValue("0:00:03")
-        On Error GoTo 0
-    End If
-
-    Dim olNS     As Object
-    Dim olFolder As Object
-    Set olNS = olApp.GetNamespace("MAPI")
-    olNS.Logon
-
-    On Error Resume Next
-    If UCase(olFolderName) = "INBOX" Or olFolderName = "" Then
-        Set olFolder = olNS.GetDefaultFolder(6)
-    Else
-        Set olFolder = olNS.GetDefaultFolder(6).Folders(olFolderName)
-    End If
-    On Error GoTo 0
-
-    If olFolder Is Nothing Then
-        MsgBox "Outlook folder not found: " & olFolderName, vbExclamation : Exit Sub
-    End If
-
-    ' Fast filter using Restrict
-    Dim filterStr As String
-    filterStr = "[ReceivedTime] >= '" & Format(dateFrom, "DD/MM/YYYY") & " 00:00 AM'" & _
-                " AND [ReceivedTime] <= '" & Format(dateTo, "DD/MM/YYYY") & " 11:59 PM'"
-
-    Dim filteredItems As Object
-    Set filteredItems = olFolder.Items.Restrict(filterStr)
-    filteredItems.Sort "[ReceivedTime]", False
-
-    ' Log sheet
-    Dim logWs  As Worksheet : Set logWs = ThisWorkbook.Sheets("Download Log")
-    Dim logRow As Long
-    logRow = logWs.Cells(logWs.Rows.Count, 1).End(xlUp).Row + 1
-    If logRow = 2 And logWs.Cells(2, 1).Value = "" Then logRow = 2
-
-    Dim dlCount   As Long : dlCount   = 0
-    Dim skipCount As Long : skipCount = 0
-    Dim counter   As Long : counter   = 1
-    Dim mailItem  As Object
-    Dim att       As Object
-
-    For Each mailItem In filteredItems
-
-        If InStr(1, LCase(mailItem.SenderEmailAddress), LCase(senderEmail)) > 0 Then
-
-            Application.StatusBar = "Processing " & counter & " of " & _
-                                     filteredItems.Count & ": " & Left(mailItem.Subject, 40)
-
-            If mailItem.Attachments.Count > 0 Then
-                For Each att In mailItem.Attachments
-                    If LCase(Right(att.FileName, 4)) = ".pdf" Then
-
-                        Dim fName    As String : fName = att.FileName
-                        Dim fullPath As String : fullPath = savePath & fName
-
-                        ' Avoid overwrite
-                        If Dir(fullPath) <> "" Then
-                            fName    = Left(fName, Len(fName) - 4) & "_" & _
-                                       Format(Now, "HHMMSS") & ".pdf"
-                            fullPath = savePath & fName
-                        End If
-
-                        On Error Resume Next
-                        att.SaveAsFile fullPath
-
-                        If Err.Number = 0 Then
-                            dlCount = dlCount + 1
-                            With logWs
-                                .Cells(logRow, 1).Value = logRow - 1
-                                .Cells(logRow, 2).Value = Format(Now, "DD/MM/YYYY HH:MM:SS")
-                                .Cells(logRow, 3).Value = mailItem.Subject
-                                .Cells(logRow, 4).Value = mailItem.SenderEmailAddress
-                                .Cells(logRow, 5).Value = fName
-                                .Cells(logRow, 6).Value = "Downloaded"
-                                .Cells(logRow, 6).Font.Color = RGB(0, 128, 0)
-                                .Cells(logRow, 7).Value = fullPath
-                                .Range(.Cells(logRow, 1), .Cells(logRow, 7)).Font.Name = "Arial"
-                                .Range(.Cells(logRow, 1), .Cells(logRow, 7)).Font.Size = 9
-                                Call ApplyBorder(.Range(.Cells(logRow, 1), .Cells(logRow, 7)))
-                            End With
-                            logRow = logRow + 1
-                        Else
-                            skipCount = skipCount + 1
-                            With logWs
-                                .Cells(logRow, 1).Value = logRow - 1
-                                .Cells(logRow, 2).Value = Format(Now, "DD/MM/YYYY HH:MM:SS")
-                                .Cells(logRow, 3).Value = mailItem.Subject
-                                .Cells(logRow, 4).Value = mailItem.SenderEmailAddress
-                                .Cells(logRow, 5).Value = att.FileName
-                                .Cells(logRow, 6).Value = "FAILED"
-                                .Cells(logRow, 6).Font.Color = RGB(200, 0, 0)
-                                .Cells(logRow, 7).Value = "Error: " & Err.Description
-                            End With
-                            logRow = logRow + 1
-                        End If
-                        Err.Clear
-                        On Error GoTo 0
-                    End If
-                Next att
-            End If
-        End If
-        counter = counter + 1
-    Next mailItem
-
-    ' Update status
-    ws.Cells(21, 3).Value = IIf(dlCount > 0, "Success - " & dlCount & " file(s)", "No PDF files found")
-    ws.Cells(21, 3).Font.Color = IIf(dlCount > 0, RGB(0, 128, 0), RGB(200, 0, 0))
-    ws.Cells(22, 3).Value = dlCount
-    ws.Cells(23, 3).Value = Format(Now, "DD/MM/YYYY HH:MM:SS")
-    Application.StatusBar = False
-
-    MsgBox "Download Complete!" & vbNewLine & vbNewLine & _
-           "Files Downloaded : " & dlCount & vbNewLine & _
-           "Files Skipped    : " & skipCount & vbNewLine & _
-           "Saved To         : " & savePath & vbNewLine & vbNewLine & _
-           "See 'Download Log' sheet for full details.", _
-           vbInformation, "PDF Download Complete"
-    Exit Sub
-
-ErrOutlook:
-    MsgBox "Could not open Outlook. Please ensure Outlook is installed on this PC.", _
-           vbCritical, "Outlook Error"
-End Sub
+    GetMacroCode = c
+End Function
