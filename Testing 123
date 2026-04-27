@@ -1,44 +1,276 @@
-'-----------------------------------
-' Optional Time Logic
-'-----------------------------------
+Sub DownloadPDFAttachments()
 
-If Trim(timeFrom) = "" Then
+    On Error GoTo MainError
 
-    startDateTime = DateValue(dFrom)
-
-Else
-
-    On Error Resume Next
-    startDateTime = DateValue(dFrom) + TimeValue(timeFrom)
+    Dim ws As Worksheet
+    Dim logWs As Worksheet
     
-    If Err.Number <> 0 Then
-        MsgBox "Invalid Time From." & vbCrLf & _
-               "Use formats like:" & vbCrLf & _
-               "14:30 OR 2:30 PM", vbExclamation
+    Set ws = ThisWorkbook.Sheets("PDF Downloader")
+    Set logWs = ThisWorkbook.Sheets("Download Log")
+    
+    '========================
+    ' Read inputs
+    '========================
+    Dim sEmail As String
+    Dim sPath As String
+    Dim sFldr As String
+    
+    Dim dFrom As Date
+    Dim dTo As Date
+    
+    Dim timeFrom As String
+    Dim timeTo As String
+    
+    Dim startDateTime As Date
+    Dim endDateTime As Date
+    
+    sEmail = Trim(ws.Range("C4").Value)
+    sPath = Trim(ws.Range("C9").Value)
+    sFldr = Trim(ws.Range("C10").Value)
+    
+    If sEmail = "" Then
+        MsgBox "Enter Sender Email Address", vbExclamation
         Exit Sub
     End If
     
-    On Error GoTo MainError
-
-End If
-
-
-If Trim(timeTo) = "" Then
-
-    endDateTime = DateValue(dTo) + TimeValue("23:59:59")
-
-Else
-
-    On Error Resume Next
-    endDateTime = DateValue(dTo) + TimeValue(timeTo)
-    
-    If Err.Number <> 0 Then
-        MsgBox "Invalid Time To." & vbCrLf & _
-               "Use formats like:" & vbCrLf & _
-               "18:45 OR 6:45 PM", vbExclamation
+    If Not IsDate(ws.Range("C5").Value) Then
+        MsgBox "Enter valid Date From", vbExclamation
         Exit Sub
     End If
     
-    On Error GoTo MainError
+    If Not IsDate(ws.Range("C7").Value) Then
+        MsgBox "Enter valid Date To", vbExclamation
+        Exit Sub
+    End If
+    
+    dFrom = CDate(ws.Range("C5").Value)
+    dTo = CDate(ws.Range("C7").Value)
+    
+    '========================
+    ' Read optional times safely
+    '========================
+    
+    If ws.Range("C6").Value = "" Then
+        timeFrom = ""
+    Else
+        timeFrom = Format(ws.Range("C6").Value, "hh:mm:ss")
+    End If
+    
+    If ws.Range("C8").Value = "" Then
+        timeTo = ""
+    Else
+        timeTo = Format(ws.Range("C8").Value, "hh:mm:ss")
+    End If
+    
+    'Start time
+    If timeFrom = "" Then
+        startDateTime = DateValue(dFrom)
+    Else
+        On Error Resume Next
+        startDateTime = DateValue(dFrom) + CDbl(TimeValue(timeFrom))
+        
+        If Err.Number <> 0 Then
+            Err.Clear
+            MsgBox "Invalid Time From format", vbExclamation
+            Exit Sub
+        End If
+        On Error GoTo MainError
+    End If
+    
+    'End time
+    If timeTo = "" Then
+        endDateTime = DateValue(dTo) + CDbl(TimeValue("23:59:59"))
+    Else
+        On Error Resume Next
+        endDateTime = DateValue(dTo) + CDbl(TimeValue(timeTo))
+        
+        If Err.Number <> 0 Then
+            Err.Clear
+            MsgBox "Invalid Time To format", vbExclamation
+            Exit Sub
+        End If
+        On Error GoTo MainError
+    End If
+    
+    If startDateTime > endDateTime Then
+        MsgBox "Date/Time From cannot be greater than Date/Time To", vbExclamation
+        Exit Sub
+    End If
+    
+    '========================
+    ' Validate save path
+    '========================
+    If sPath = "" Then
+        MsgBox "Select Save Folder Path", vbExclamation
+        Exit Sub
+    End If
+    
+    If Right(sPath, 1) <> "\" Then
+        sPath = sPath & "\"
+    End If
+    
+    If Dir(sPath, vbDirectory) = "" Then
+        MsgBox "Folder path not found", vbExclamation
+        Exit Sub
+    End If
+    
+    '========================
+    ' Open Outlook
+    '========================
+    Dim olApp As Object
+    Dim olNS As Object
+    Dim olFld As Object
+    
+    On Error Resume Next
+    Set olApp = GetObject(, "Outlook.Application")
+    On Error GoTo 0
+    
+    If olApp Is Nothing Then
+        Set olApp = CreateObject("Outlook.Application")
+    End If
+    
+    Set olNS = olApp.GetNamespace("MAPI")
+    olNS.Logon
+    
+    '========================
+    ' Select folder dynamically
+    '========================
+    If UCase(Trim(sFldr)) = "INBOX" Or Trim(sFldr) = "" Then
+        
+        Set olFld = olNS.GetDefaultFolder(6)
+        
+    Else
+        
+        On Error Resume Next
+        Set olFld = olNS.GetDefaultFolder(6).Folders(sFldr)
+        On Error GoTo 0
+        
+        If olFld Is Nothing Then
+            MsgBox "Outlook folder not found: " & sFldr, vbExclamation
+            Exit Sub
+        End If
+        
+    End If
+    
+    '========================
+    ' Filter emails
+    '========================
+    Dim items As Object
+    Dim filterStr As String
+    
+    filterStr = "[ReceivedTime] >= '" & _
+                Format(startDateTime, "ddddd h:nn AMPM") & _
+                "' AND [ReceivedTime] <= '" & _
+                Format(endDateTime, "ddddd h:nn AMPM") & "'"
+    
+    Set items = olFld.Items.Restrict(filterStr)
+    items.Sort "[ReceivedTime]", False
+    
+    If items.Count = 0 Then
+        MsgBox "No emails found in selected range", vbInformation
+        Exit Sub
+    End If
+    
+    '========================
+    ' Progress Form
+    '========================
+    frmProgress.lblStatus.Caption = "Preparing Emails..."
+    frmProgress.lblCount.Caption = "0 / " & items.Count & " Emails Processed"
+    frmProgress.lblDownloaded.Caption = "PDFs Downloaded : 0"
+    frmProgress.lblBar.Width = 0
+    
+    frmProgress.Show vbModeless
+    DoEvents
+    
+    '========================
+    ' Process emails
+    '========================
+    Dim mi As Object
+    Dim at As Object
+    
+    Dim processed As Long
+    Dim downloaded As Long
+    Dim logRow As Long
+    
+    logRow = logWs.Cells(logWs.Rows.Count, 1).End(xlUp).Row + 1
+    If logRow < 2 Then logRow = 2
+    
+    For Each mi In items
+    
+        processed = processed + 1
+        
+        frmProgress.lblCount.Caption = processed & " / " & items.Count & " Emails Processed"
+        frmProgress.lblBar.Width = (processed / items.Count) * 220
+        
+        DoEvents
+        
+        If TypeName(mi) = "MailItem" Then
+            
+            If LCase(mi.SenderEmailAddress) = LCase(sEmail) Then
+                
+                If mi.Attachments.Count > 0 Then
+                    
+                    For Each at In mi.Attachments
+                        
+                        If LCase(Right(at.FileName, 4)) = ".pdf" Then
+                            
+                            Dim filePath As String
+                            filePath = sPath & at.FileName
+                            
+                            If Dir(filePath) <> "" Then
+                                filePath = sPath & _
+                                Format(Now, "yyyymmdd_hhnnss_") & _
+                                at.FileName
+                            End If
+                            
+                            at.SaveAsFile filePath
+                            
+                            downloaded = downloaded + 1
+                            
+                            frmProgress.lblDownloaded.Caption = _
+                            "PDFs Downloaded : " & downloaded
+                            
+                            logWs.Cells(logRow, 1).Value = logRow - 1
+                            logWs.Cells(logRow, 2).Value = Now
+                            logWs.Cells(logRow, 3).Value = mi.Subject
+                            logWs.Cells(logRow, 4).Value = mi.SenderEmailAddress
+                            logWs.Cells(logRow, 5).Value = at.FileName
+                            logWs.Cells(logRow, 6).Value = "Downloaded"
+                            logWs.Cells(logRow, 7).Value = filePath
+                            
+                            logRow = logRow + 1
+                            
+                        End If
+                        
+                    Next at
+                    
+                End If
+                
+            End If
+            
+        End If
+        
+    Next mi
+    
+    Unload frmProgress
+    
+    '========================
+    ' Final status update
+    '========================
+    ws.Range("C15").Value = "Success"
+    ws.Range("C16").Value = downloaded
+    ws.Range("C17").Value = Now
+    
+    MsgBox downloaded & " PDF files downloaded successfully.", vbInformation
+    
+    Exit Sub
 
-End If
+
+MainError:
+    
+    On Error Resume Next
+    Unload frmProgress
+    
+    MsgBox "Error: " & Err.Description, vbCritical
+
+End Sub
