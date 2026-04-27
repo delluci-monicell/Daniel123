@@ -1,39 +1,429 @@
-Now I see what you’re trying to match. Your previous table was still wrong because it treated everything as flat rows. The sample you shared clearly uses a parent activity → sub-activities underneath it structure.
+Option Explicit
 
-That format looks far more professional for process reviews because it shows workflow hierarchy.
+'==============================================================================
+' RUN THIS ONCE IN ANY BLANK EXCEL
+' It creates a fully standalone new Excel file with everything inside it
+'==============================================================================
+Sub CreatePDFDownloaderFile()
 
-Use this format:
+    Dim newWB    As Workbook
+    Dim ws       As Worksheet
+    Dim logWs    As Worksheet
+    Dim savePath As String
 
-S.no	Activity Name	Automation Level	Time Consumed in mins (1 qty)	Notes
-1	Tax Form Acknowledgment			
-	Receiving Documents	N/A	00:05:00	Physical receipt of tax forms
-	Acknowledgment to Client	N/A	00:03:00	Manual acknowledgment process
-	STAR Entry	N/A	00:07:00	Entering details and creating reclaim reference
+    ' Ask where to save the new file
+    savePath = Application.GetSaveAsFilename( _
+        InitialFileName:="PDF_Downloader", _
+        FileFilter:="Excel Macro-Enabled Workbook (*.xlsm), *.xlsm", _
+        Title:="Save New PDF Downloader File As...")
 
-| 2 | Document Scanning & Upload |  |  |  |
-|  | Scanning Documents | N/A | 00:03:00 | Physical scanning required |
-|  | File Renaming | Medium | 00:01:00 | Can automate by reading PDF reference and auto-renaming |
-|  | STAR Attachment Upload | Low | 00:01:00 | Upload remains partially manual |
+    If savePath = "False" Then
+        MsgBox "Cancelled. No file was created.", vbInformation
+        Exit Sub
+    End If
 
-| 3 | Belgium Reclaim Review |  |  |  |
-|  | Reclaim Pack Review | Low | 00:07:00 | Review after L1 preparation |
-|  | Review After Revision | Low | 00:03:00 | Final validation |
+    ' Create brand new workbook
+    Set newWB = Workbooks.Add
+    Application.DisplayAlerts = False
+    Do While newWB.Sheets.Count > 1
+        newWB.Sheets(newWB.Sheets.Count).Delete
+    Loop
+    Application.DisplayAlerts = True
 
-| 4 | Dispatch Preparation |  |  |  |
-|  | Credit Advice Preparation | Medium | 00:05:00 | Auto-generation possible |
-|  | Tax Template Preparation | Medium | 00:05:00 | Repetitive manual work |
-|  | CV Preparation | Medium | 00:05:00 | Can be automated |
-|  | Physical Package Dispatch | N/A | 00:05:00 | Manual physical handling |
+    Set ws = newWB.Sheets(1)
+    ws.Name = "PDF Downloader"
+    Set logWs = newWB.Sheets.Add(After:=ws)
+    logWs.Name = "Download Log"
 
-| 5 | Blocking Letter Handling |  |  |  |
-|  | Review Tax Authority Queries | Low | 00:05:00 | Manual review required |
-|  | AM Communication | Medium | 00:10:00 | Email templates can help |
-|  | Response to Tax Authority | Low | 00:05:00 | Final compliance review needed |
+    ' Column widths & row heights
+    ws.Columns("A").ColumnWidth = 2
+    ws.Columns("B").ColumnWidth = 26
+    ws.Columns("C").ColumnWidth = 33
+    ws.Columns("D").ColumnWidth = 14
+    ws.Columns("E").ColumnWidth = 2
+    Dim r As Long
+    For r = 1 To 35
+        ws.Rows(r).RowHeight = 24
+    Next r
 
-| 6 | Additional Document Preparation |  |  |  |
-|  | Bank Statement Preparation | High | 00:10:00 | Strong automation potential |
-|  | SOT Preparation | Low-Medium | 00:15:00 | Partial automation possible |
+    ' Title
+    ws.Rows(1).RowHeight = 40
+    With ws.Range("A1:E1")
+        .Merge
+        .Value = "   OUTLOOK PDF ATTACHMENT DOWNLOADER"
+        .Font.Name = "Arial" : .Font.Bold = True
+        .Font.Size = 14 : .Font.Color = RGB(255, 255, 255)
+        .Interior.Color = RGB(31, 78, 121)
+        .HorizontalAlignment = xlCenter : .VerticalAlignment = xlCenter
+    End With
 
-This now mirrors the Denmark example properly.
+    ws.Rows(2).RowHeight = 8
+    Call FmtHeader(ws.Range("A3:E3"), "  SETTINGS")
 
-And honestly—this format is much stronger because management can instantly see which exact sub-task is eating time, instead of seeing one vague activity bucket and asking follow-up questions.
+    Call FmtLabel(ws.Cells(4, 2), "Sender Email Address")
+    Call FmtInput(ws.Cells(4, 3), "scanner@yourcompany.com")
+    Call FmtLabel(ws.Cells(5, 2), "Date From")
+    Call FmtInput(ws.Cells(5, 3), "")
+    ws.Cells(5, 3).NumberFormat = "DD/MM/YYYY"
+    Call FmtLabel(ws.Cells(6, 2), "Date To")
+    Call FmtInput(ws.Cells(6, 3), "")
+    ws.Cells(6, 3).NumberFormat = "DD/MM/YYYY"
+    Call FmtLabel(ws.Cells(7, 2), "Save Folder Path")
+    Call FmtInput(ws.Cells(7, 3), "")
+    Call FmtLabel(ws.Cells(8, 2), "Outlook Folder Name")
+    Call FmtInput(ws.Cells(8, 3), "Inbox")
+
+    ws.Rows(9).RowHeight = 8
+
+    ' Buttons — OnAction uses just the sub name, no workbook prefix
+    ' They will be stored in the new workbook's own module
+    Dim b As Button
+
+    Set b = ws.Buttons.Add(ws.Cells(5,4).Left+1, ws.Cells(5,4).Top+2, ws.Cells(5,4).Width-2, ws.Cells(5,4).Height-4)
+    b.Caption = "Pick Date" : b.OnAction = "ShowCalendarFrom"
+    b.Font.Name = "Arial" : b.Font.Size = 9 : b.Font.Bold = True
+
+    Set b = ws.Buttons.Add(ws.Cells(6,4).Left+1, ws.Cells(6,4).Top+2, ws.Cells(6,4).Width-2, ws.Cells(6,4).Height-4)
+    b.Caption = "Pick Date" : b.OnAction = "ShowCalendarTo"
+    b.Font.Name = "Arial" : b.Font.Size = 9 : b.Font.Bold = True
+
+    Set b = ws.Buttons.Add(ws.Cells(7,4).Left+1, ws.Cells(7,4).Top+2, ws.Cells(7,4).Width-2, ws.Cells(7,4).Height-4)
+    b.Caption = "Browse..." : b.OnAction = "BrowseFolder"
+    b.Font.Name = "Arial" : b.Font.Size = 9 : b.Font.Bold = True
+
+    ws.Rows(10).RowHeight = 40
+    Set b = ws.Buttons.Add(ws.Cells(10,2).Left, ws.Cells(10,2).Top+2, _
+        ws.Cells(10,3).Left + ws.Cells(10,3).Width - ws.Cells(10,2).Left, 36)
+    b.Caption = "  DOWNLOAD PDFs FROM OUTLOOK"
+    b.OnAction = "DownloadPDFAttachments"
+    b.Font.Name = "Arial" : b.Font.Size = 12 : b.Font.Bold = True
+
+    ws.Rows(11).RowHeight = 8
+    Call FmtHeader(ws.Range("A12:E12"), "  STATUS")
+    Call FmtLabel(ws.Cells(13, 2), "Last Run Status")
+    Call FmtOutput(ws.Cells(13, 3), "Not yet run")
+    Call FmtLabel(ws.Cells(14, 2), "Files Downloaded")
+    Call FmtOutput(ws.Cells(14, 3), "0")
+    Call FmtLabel(ws.Cells(15, 2), "Last Run Time")
+    Call FmtOutput(ws.Cells(15, 3), "")
+
+    ws.Rows(16).RowHeight = 8
+    Call FmtHeader(ws.Range("A17:E17"), "  IMPORTANT NOTES")
+    Dim notes As Variant
+    notes = Array( _
+        "Outlook opens automatically if it is currently closed", _
+        "Only .PDF attachments are downloaded — other files skipped", _
+        "Make sure the Save Folder exists on your PC before running", _
+        "Password-protected PDFs are downloaded as normal files", _
+        "Outlook Folder Name must match exactly as shown in Outlook", _
+        "Check the Download Log sheet after each run for full details")
+    Dim n As Integer
+    For n = 0 To UBound(notes)
+        ws.Range(ws.Cells(18+n,2), ws.Cells(18+n,4)).Merge
+        With ws.Cells(18+n, 2)
+            .Value = Chr(149) & "  " & notes(n)
+            .Font.Name = "Arial" : .Font.Size = 9
+            .Font.Color = RGB(127, 0, 0)
+            .Interior.Color = RGB(255, 235, 235)
+            .HorizontalAlignment = xlLeft : .VerticalAlignment = xlCenter
+            Call FmtBorder(.Cells)
+        End With
+        ws.Rows(18+n).RowHeight = 20
+    Next n
+
+    ' Log sheet headers
+    Dim lh As Variant, lw As Variant
+    lh = Array("#","Timestamp","Email Subject","Sender Email","File Name","Status","Full Save Path")
+    lw = Array(5, 22, 42, 32, 36, 14, 48)
+    Dim h As Integer
+    For h = 0 To UBound(lh)
+        With logWs.Cells(1, h+1)
+            .Value = lh(h)
+            .Font.Name = "Arial" : .Font.Bold = True
+            .Font.Size = 10 : .Font.Color = RGB(255, 255, 255)
+            .Interior.Color = RGB(31, 78, 121)
+            .HorizontalAlignment = xlCenter : .VerticalAlignment = xlCenter
+            Call FmtBorder(.Cells)
+        End With
+        logWs.Columns(h+1).ColumnWidth = lw(h)
+    Next h
+    logWs.Rows(1).RowHeight = 26
+    logWs.Tab.Color = RGB(31, 78, 121)
+    ws.Tab.Color = RGB(31, 78, 121)
+
+    '==========================================================================
+    ' INJECT ALL MACROS DIRECTLY INTO THE NEW WORKBOOK MODULE
+    ' This makes the new file 100% standalone — no dependency on this file
+    '==========================================================================
+    Dim vbComp As Object
+    Set vbComp = newWB.VBProject.VBComponents.Add(1) ' Standard Module
+    vbComp.Name = "MainMacros"
+
+    Dim c As String
+
+    c = c & "Option Explicit" & vbCrLf
+    c = c & "" & vbCrLf
+
+    '── ShowCalendarFrom ──────────────────────────────────────────────────────
+    c = c & "Sub ShowCalendarFrom()" & vbCrLf
+    c = c & "    Call ShowCalendar(5)" & vbCrLf
+    c = c & "End Sub" & vbCrLf & vbCrLf
+
+    '── ShowCalendarTo ────────────────────────────────────────────────────────
+    c = c & "Sub ShowCalendarTo()" & vbCrLf
+    c = c & "    Call ShowCalendar(6)" & vbCrLf
+    c = c & "End Sub" & vbCrLf & vbCrLf
+
+    '── ShowCalendar ──────────────────────────────────────────────────────────
+    c = c & "Sub ShowCalendar(targetRow As Integer)" & vbCrLf
+    c = c & "    Dim ws As Worksheet" & vbCrLf
+    c = c & "    Set ws = ThisWorkbook.Sheets(""PDF Downloader"")" & vbCrLf
+    c = c & "    Dim curDate As Date" & vbCrLf
+    c = c & "    If IsDate(ws.Cells(targetRow, 3).Value) Then" & vbCrLf
+    c = c & "        curDate = CDate(ws.Cells(targetRow, 3).Value)" & vbCrLf
+    c = c & "    Else" & vbCrLf
+    c = c & "        curDate = Date" & vbCrLf
+    c = c & "    End If" & vbCrLf
+    c = c & "    Dim picked As String" & vbCrLf
+    c = c & "    Do" & vbCrLf
+    c = c & "        picked = InputBox(MakeCalendar(Year(curDate), Month(curDate)), _" & vbCrLf
+    c = c & "                          ""Select Date (DD/MM/YYYY)"", _" & vbCrLf
+    c = c & "                          Format(curDate, ""DD/MM/YYYY""))" & vbCrLf
+    c = c & "        If picked = """" Then Exit Sub" & vbCrLf
+    c = c & "        If IsDate(picked) Then Exit Do" & vbCrLf
+    c = c & "        MsgBox ""Invalid date. Use DD/MM/YYYY format. Example: 01/04/2026"", vbExclamation" & vbCrLf
+    c = c & "    Loop" & vbCrLf
+    c = c & "    ws.Cells(targetRow, 3).Value = CDate(picked)" & vbCrLf
+    c = c & "    ws.Cells(targetRow, 3).NumberFormat = ""DD/MM/YYYY""" & vbCrLf
+    c = c & "End Sub" & vbCrLf & vbCrLf
+
+    '── MakeCalendar ─────────────────────────────────────────────────────────
+    c = c & "Function MakeCalendar(yr As Integer, mo As Integer) As String" & vbCrLf
+    c = c & "    Dim mn As Variant" & vbCrLf
+    c = c & "    mn = Array("""",""January"",""February"",""March"",""April"",""May"",""June""," & vbCrLf
+    c = c & "               ""July"",""August"",""September"",""October"",""November"",""December"")" & vbCrLf
+    c = c & "    Dim p As String" & vbCrLf
+    c = c & "    p = ""  === "" & mn(mo) & "" "" & yr & "" ==="" & vbCrLf" & vbCrLf
+    c = c & "    p = p & ""  Sun  Mon  Tue  Wed  Thu  Fri  Sat"" & vbCrLf" & vbCrLf
+    c = c & "    p = p & String(38, ""-"") & vbCrLf" & vbCrLf
+    c = c & "    Dim fd As Integer : fd = Weekday(DateSerial(yr, mo, 1), vbSunday)" & vbCrLf
+    c = c & "    Dim dm As Integer : dm = Day(DateSerial(yr, mo + 1, 0))" & vbCrLf
+    c = c & "    Dim col As Integer : col = 1" & vbCrLf
+    c = c & "    Dim ln  As String  : ln  = """"" & vbCrLf
+    c = c & "    Dim d   As Integer" & vbCrLf
+    c = c & "    For d = 1 To fd - 1 : ln = ln & ""     "" : col = col + 1 : Next d" & vbCrLf
+    c = c & "    For d = 1 To dm" & vbCrLf
+    c = c & "        ln = ln & Right(""    "" & d, 4) & "" """ & vbCrLf
+    c = c & "        col = col + 1" & vbCrLf
+    c = c & "        If col > 7 Then : p = p & ln & vbCrLf : ln = """" : col = 1 : End If" & vbCrLf
+    c = c & "    Next d" & vbCrLf
+    c = c & "    If ln <> """" Then p = p & ln & vbCrLf" & vbCrLf
+    c = c & "    p = p & String(38, ""-"") & vbCrLf" & vbCrLf
+    c = c & "    p = p & ""Enter the date below in DD/MM/YYYY format:""" & vbCrLf
+    c = c & "    MakeCalendar = p" & vbCrLf
+    c = c & "End Function" & vbCrLf & vbCrLf
+
+    '── BrowseFolder ─────────────────────────────────────────────────────────
+    c = c & "Sub BrowseFolder()" & vbCrLf
+    c = c & "    Dim ws As Worksheet" & vbCrLf
+    c = c & "    Set ws = ThisWorkbook.Sheets(""PDF Downloader"")" & vbCrLf
+    c = c & "    Dim sh  As Object : Set sh = CreateObject(""Shell.Application"")" & vbCrLf
+    c = c & "    Dim fld As Object : Set fld = sh.BrowseForFolder(0, ""Select folder to save PDFs:"", 0, ""C:\"")" & vbCrLf
+    c = c & "    If Not fld Is Nothing Then" & vbCrLf
+    c = c & "        Dim fp As String : fp = fld.Self.Path" & vbCrLf
+    c = c & "        If Right(fp, 1) <> ""\"" Then fp = fp & ""\""" & vbCrLf
+    c = c & "        ws.Cells(7, 3).Value = fp" & vbCrLf
+    c = c & "    End If" & vbCrLf
+    c = c & "End Sub" & vbCrLf & vbCrLf
+
+    '── DownloadPDFAttachments ────────────────────────────────────────────────
+    c = c & "Sub DownloadPDFAttachments()" & vbCrLf
+    c = c & "    Dim ws As Worksheet" & vbCrLf
+    c = c & "    Set ws = ThisWorkbook.Sheets(""PDF Downloader"")" & vbCrLf
+    c = c & "    Dim sEmail As String : sEmail = Trim(ws.Cells(4,3).Value)" & vbCrLf
+    c = c & "    Dim sPath  As String : sPath  = Trim(ws.Cells(7,3).Value)" & vbCrLf
+    c = c & "    Dim sFldr  As String : sFldr  = Trim(ws.Cells(8,3).Value)" & vbCrLf
+    c = c & "    Dim dFrom  As Date,  dTo As Date" & vbCrLf
+    c = c & "    If sEmail = """" Then MsgBox ""Enter Sender Email in C4."",vbExclamation:Exit Sub" & vbCrLf
+    c = c & "    If Not IsDate(ws.Cells(5,3).Value) Then MsgBox ""Click Pick Date for Date From."",vbExclamation:Exit Sub" & vbCrLf
+    c = c & "    If Not IsDate(ws.Cells(6,3).Value) Then MsgBox ""Click Pick Date for Date To."",vbExclamation:Exit Sub" & vbCrLf
+    c = c & "    dFrom = CDate(ws.Cells(5,3).Value)" & vbCrLf
+    c = c & "    dTo   = CDate(ws.Cells(6,3).Value)" & vbCrLf
+    c = c & "    If dFrom > dTo Then MsgBox ""Date From cannot be after Date To."",vbExclamation:Exit Sub" & vbCrLf
+    c = c & "    If sPath = """" Then MsgBox ""Click Browse to select Save Folder."",vbExclamation:Exit Sub" & vbCrLf
+    c = c & "    If Right(sPath,1) <> ""\"" Then sPath = sPath & ""\""" & vbCrLf
+    c = c & "    If Dir(sPath, vbDirectory) = """" Then" & vbCrLf
+    c = c & "        MsgBox ""Folder not found: "" & sPath & vbCrLf & ""Create it or click Browse."",vbExclamation:Exit Sub" & vbCrLf
+    c = c & "    End If" & vbCrLf
+    c = c & "    Dim olApp As Object" & vbCrLf
+    c = c & "    On Error Resume Next" & vbCrLf
+    c = c & "    Set olApp = GetObject(,""Outlook.Application"")" & vbCrLf
+    c = c & "    On Error GoTo 0" & vbCrLf
+    c = c & "    If olApp Is Nothing Then" & vbCrLf
+    c = c & "        Application.StatusBar = ""Opening Outlook, please wait...""" & vbCrLf
+    c = c & "        On Error GoTo ErrOL" & vbCrLf
+    c = c & "        Set olApp = CreateObject(""Outlook.Application"")" & vbCrLf
+    c = c & "        Application.Wait Now + TimeValue(""0:00:04"")" & vbCrLf
+    c = c & "        On Error GoTo 0" & vbCrLf
+    c = c & "    End If" & vbCrLf
+    c = c & "    Dim olNS  As Object : Set olNS = olApp.GetNamespace(""MAPI"")" & vbCrLf
+    c = c & "    olNS.Logon" & vbCrLf
+    c = c & "    Dim olFld As Object" & vbCrLf
+    c = c & "    On Error Resume Next" & vbCrLf
+    c = c & "    If UCase(sFldr) = ""INBOX"" Or sFldr = """" Then" & vbCrLf
+    c = c & "        Set olFld = olNS.GetDefaultFolder(6)" & vbCrLf
+    c = c & "    Else" & vbCrLf
+    c = c & "        Set olFld = olNS.GetDefaultFolder(6).Folders(sFldr)" & vbCrLf
+    c = c & "        If olFld Is Nothing Then" & vbCrLf
+    c = c & "            Dim ac As Object" & vbCrLf
+    c = c & "            For Each ac In olNS.Folders" & vbCrLf
+    c = c & "                Set olFld = ac.Folders(sFldr)" & vbCrLf
+    c = c & "                If Not olFld Is Nothing Then Exit For" & vbCrLf
+    c = c & "            Next ac" & vbCrLf
+    c = c & "        End If" & vbCrLf
+    c = c & "    End If" & vbCrLf
+    c = c & "    On Error GoTo 0" & vbCrLf
+    c = c & "    If olFld Is Nothing Then" & vbCrLf
+    c = c & "        MsgBox ""Folder not found: '"" & sFldr & ""'"" & vbCrLf & ""Check exact name in Outlook."",vbExclamation" & vbCrLf
+    c = c & "        Application.StatusBar = False : Exit Sub" & vbCrLf
+    c = c & "    End If" & vbCrLf
+    c = c & "    Application.StatusBar = ""Filtering emails..."" " & vbCrLf
+    c = c & "    Dim fStr As String" & vbCrLf
+    c = c & "    fStr = ""[ReceivedTime] >= '"" & Format(dFrom,""DD/MM/YYYY"") & "" 00:00 AM'"" & _" & vbCrLf
+    c = c & "           "" AND [ReceivedTime] <= '"" & Format(dTo,""DD/MM/YYYY"") & "" 11:59 PM'""" & vbCrLf
+    c = c & "    Dim items As Object : Set items = olFld.Items.Restrict(fStr)" & vbCrLf
+    c = c & "    items.Sort ""[ReceivedTime]"", False" & vbCrLf
+    c = c & "    Dim logWs  As Worksheet : Set logWs = ThisWorkbook.Sheets(""Download Log"")" & vbCrLf
+    c = c & "    Dim logRow As Long" & vbCrLf
+    c = c & "    logRow = logWs.Cells(logWs.Rows.Count,1).End(xlUp).Row + 1" & vbCrLf
+    c = c & "    If logRow = 2 And logWs.Cells(2,1).Value = """" Then logRow = 2" & vbCrLf
+    c = c & "    Dim dlCount As Long : dlCount = 0" & vbCrLf
+    c = c & "    Dim skCount As Long : skCount = 0" & vbCrLf
+    c = c & "    Dim cnt     As Long : cnt     = 1" & vbCrLf
+    c = c & "    Dim mi As Object, at As Object" & vbCrLf
+    c = c & "    For Each mi In items" & vbCrLf
+    c = c & "        If InStr(1, LCase(mi.SenderEmailAddress), LCase(sEmail)) > 0 Then" & vbCrLf
+    c = c & "            Application.StatusBar = ""Processing "" & cnt & "" of "" & items.Count" & vbCrLf
+    c = c & "            If mi.Attachments.Count > 0 Then" & vbCrLf
+    c = c & "                For Each at In mi.Attachments" & vbCrLf
+    c = c & "                    If LCase(Right(at.FileName,4)) = "".pdf"" Then" & vbCrLf
+    c = c & "                        Dim fn As String : fn = at.FileName" & vbCrLf
+    c = c & "                        Dim fp As String : fp = sPath & fn" & vbCrLf
+    c = c & "                        If Dir(fp) <> """" Then" & vbCrLf
+    c = c & "                            fn = Left(fn,Len(fn)-4) & ""_"" & Format(Now,""HHMMSS"") & "".pdf""" & vbCrLf
+    c = c & "                            fp = sPath & fn" & vbCrLf
+    c = c & "                        End If" & vbCrLf
+    c = c & "                        On Error Resume Next" & vbCrLf
+    c = c & "                        at.SaveAsFile fp" & vbCrLf
+    c = c & "                        If Err.Number = 0 Then" & vbCrLf
+    c = c & "                            dlCount = dlCount + 1" & vbCrLf
+    c = c & "                            logWs.Cells(logRow,1).Value = logRow-1" & vbCrLf
+    c = c & "                            logWs.Cells(logRow,2).Value = Format(Now,""DD/MM/YYYY HH:MM:SS"")" & vbCrLf
+    c = c & "                            logWs.Cells(logRow,3).Value = mi.Subject" & vbCrLf
+    c = c & "                            logWs.Cells(logRow,4).Value = mi.SenderEmailAddress" & vbCrLf
+    c = c & "                            logWs.Cells(logRow,5).Value = fn" & vbCrLf
+    c = c & "                            logWs.Cells(logRow,6).Value = ""Downloaded""" & vbCrLf
+    c = c & "                            logWs.Cells(logRow,6).Font.Color = RGB(0,128,0)" & vbCrLf
+    c = c & "                            logWs.Cells(logRow,7).Value = fp" & vbCrLf
+    c = c & "                        Else" & vbCrLf
+    c = c & "                            skCount = skCount + 1" & vbCrLf
+    c = c & "                            logWs.Cells(logRow,1).Value = logRow-1" & vbCrLf
+    c = c & "                            logWs.Cells(logRow,2).Value = Format(Now,""DD/MM/YYYY HH:MM:SS"")" & vbCrLf
+    c = c & "                            logWs.Cells(logRow,3).Value = mi.Subject" & vbCrLf
+    c = c & "                            logWs.Cells(logRow,4).Value = mi.SenderEmailAddress" & vbCrLf
+    c = c & "                            logWs.Cells(logRow,5).Value = at.FileName" & vbCrLf
+    c = c & "                            logWs.Cells(logRow,6).Value = ""FAILED""" & vbCrLf
+    c = c & "                            logWs.Cells(logRow,6).Font.Color = RGB(200,0,0)" & vbCrLf
+    c = c & "                            logWs.Cells(logRow,7).Value = ""Error: "" & Err.Description" & vbCrLf
+    c = c & "                        End If" & vbCrLf
+    c = c & "                        Err.Clear : On Error GoTo 0" & vbCrLf
+    c = c & "                        logRow = logRow + 1" & vbCrLf
+    c = c & "                    End If" & vbCrLf
+    c = c & "                Next at" & vbCrLf
+    c = c & "            End If" & vbCrLf
+    c = c & "        End If" & vbCrLf
+    c = c & "        cnt = cnt + 1" & vbCrLf
+    c = c & "    Next mi" & vbCrLf
+    c = c & "    Application.StatusBar = False" & vbCrLf
+    c = c & "    ws.Cells(13,3).Value = IIf(dlCount>0,""Success - "" & dlCount & "" file(s)"",""No PDF files found"")" & vbCrLf
+    c = c & "    ws.Cells(13,3).Font.Color = IIf(dlCount>0,RGB(0,128,0),RGB(200,0,0))" & vbCrLf
+    c = c & "    ws.Cells(14,3).Value = dlCount" & vbCrLf
+    c = c & "    ws.Cells(15,3).Value = Format(Now,""DD/MM/YYYY HH:MM:SS"")" & vbCrLf
+    c = c & "    MsgBox ""Download Complete!"" & vbCrLf & vbCrLf & _" & vbCrLf
+    c = c & "           ""Downloaded : "" & dlCount & vbCrLf & _" & vbCrLf
+    c = c & "           ""Skipped    : "" & skCount & vbCrLf & _" & vbCrLf
+    c = c & "           ""Saved To   : "" & sPath, vbInformation, ""Done""" & vbCrLf
+    c = c & "    Exit Sub" & vbCrLf
+    c = c & "ErrOL:" & vbCrLf
+    c = c & "    Application.StatusBar = False" & vbCrLf
+    c = c & "    MsgBox ""Cannot open Outlook. Please ensure it is installed."",vbCritical,""Outlook Error""" & vbCrLf
+    c = c & "End Sub" & vbCrLf
+
+    vbComp.CodeModule.AddFromString c
+
+    ' Save the new standalone file
+    Application.DisplayAlerts = False
+    newWB.SaveAs Filename:=savePath, FileFormat:=52
+    Application.DisplayAlerts = True
+
+    MsgBox "Done! New standalone file created:" & vbNewLine & vbNewLine & _
+           savePath & vbNewLine & vbNewLine & _
+           "You can now CLOSE this file." & vbNewLine & _
+           "The new file works completely on its own.", _
+           vbInformation, "Success"
+
+    newWB.Activate
+End Sub
+
+'==============================================================================
+' FORMATTING HELPERS (used only during build — stay in this file)
+'==============================================================================
+Private Sub FmtHeader(rng As Range, title As String)
+    rng.Merge
+    With rng
+        .Value = title
+        .Font.Name = "Arial" : .Font.Bold = True
+        .Font.Size = 11 : .Font.Color = RGB(255, 255, 255)
+        .Interior.Color = RGB(31, 78, 121)
+        .HorizontalAlignment = xlLeft : .VerticalAlignment = xlCenter
+        Call FmtBorder(.Cells)
+    End With
+End Sub
+
+Private Sub FmtLabel(cel As Range, txt As String)
+    With cel
+        .Value = txt
+        .Font.Name = "Arial" : .Font.Bold = True
+        .Font.Size = 10 : .Font.Color = RGB(31, 78, 121)
+        .HorizontalAlignment = xlLeft : .VerticalAlignment = xlCenter
+        Call FmtBorder(.Cells)
+    End With
+End Sub
+
+Private Sub FmtInput(cel As Range, def As String)
+    With cel
+        .Value = def
+        .Font.Name = "Arial" : .Font.Size = 10
+        .Interior.Color = RGB(255, 242, 204)
+        .HorizontalAlignment = xlLeft : .VerticalAlignment = xlCenter
+        Call FmtBorder(.Cells)
+    End With
+End Sub
+
+Private Sub FmtOutput(cel As Range, def As String)
+    With cel
+        .Value = def
+        .Font.Name = "Arial" : .Font.Size = 10
+        .Interior.Color = RGB(226, 239, 218)
+        .HorizontalAlignment = xlLeft : .VerticalAlignment = xlCenter
+        Call FmtBorder(.Cells)
+    End With
+End Sub
+
+Private Sub FmtBorder(rng As Range)
+    With rng.Borders
+        .LineStyle = xlContinuous
+        .Weight = xlThin
+        .Color = RGB(184, 204, 228)
+    End With
+End Sub
