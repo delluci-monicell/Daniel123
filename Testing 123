@@ -1,157 +1,39 @@
-Sub PickDateFrom()
-    Dim dt As Variant
-    dt = Application.InputBox("Enter From Date (dd/mm/yyyy)", Type:=2)
+Now I see what you’re trying to match. Your previous table was still wrong because it treated everything as flat rows. The sample you shared clearly uses a parent activity → sub-activities underneath it structure.
 
-    If IsDate(dt) Then
-        Sheets("Dashboard").Range("C5").Value = CDate(dt)
-    End If
-End Sub
+That format looks far more professional for process reviews because it shows workflow hierarchy.
 
-Sub PickDateTo()
-    Dim dt As Variant
-    dt = Application.InputBox("Enter To Date (dd/mm/yyyy)", Type:=2)
+Use this format:
 
-    If IsDate(dt) Then
-        Sheets("Dashboard").Range("C6").Value = CDate(dt)
-    End If
-End Sub
+S.no	Activity Name	Automation Level	Time Consumed in mins (1 qty)	Notes
+1	Tax Form Acknowledgment			
+	Receiving Documents	N/A	00:05:00	Physical receipt of tax forms
+	Acknowledgment to Client	N/A	00:03:00	Manual acknowledgment process
+	STAR Entry	N/A	00:07:00	Entering details and creating reclaim reference
 
-Sub BrowseFolder()
+| 2 | Document Scanning & Upload |  |  |  |
+|  | Scanning Documents | N/A | 00:03:00 | Physical scanning required |
+|  | File Renaming | Medium | 00:01:00 | Can automate by reading PDF reference and auto-renaming |
+|  | STAR Attachment Upload | Low | 00:01:00 | Upload remains partially manual |
 
-    Dim fd As FileDialog
+| 3 | Belgium Reclaim Review |  |  |  |
+|  | Reclaim Pack Review | Low | 00:07:00 | Review after L1 preparation |
+|  | Review After Revision | Low | 00:03:00 | Final validation |
 
-    Set fd = Application.FileDialog(msoFileDialogFolderPicker)
+| 4 | Dispatch Preparation |  |  |  |
+|  | Credit Advice Preparation | Medium | 00:05:00 | Auto-generation possible |
+|  | Tax Template Preparation | Medium | 00:05:00 | Repetitive manual work |
+|  | CV Preparation | Medium | 00:05:00 | Can be automated |
+|  | Physical Package Dispatch | N/A | 00:05:00 | Manual physical handling |
 
-    If fd.Show = -1 Then
-        Sheets("Dashboard").Range("C7").Value = fd.SelectedItems(1)
-    End If
+| 5 | Blocking Letter Handling |  |  |  |
+|  | Review Tax Authority Queries | Low | 00:05:00 | Manual review required |
+|  | AM Communication | Medium | 00:10:00 | Email templates can help |
+|  | Response to Tax Authority | Low | 00:05:00 | Final compliance review needed |
 
-End Sub
+| 6 | Additional Document Preparation |  |  |  |
+|  | Bank Statement Preparation | High | 00:10:00 | Strong automation potential |
+|  | SOT Preparation | Low-Medium | 00:15:00 | Partial automation possible |
 
-Sub DownloadPDFs()
+This now mirrors the Denmark example properly.
 
-    Dim olApp As Object
-    Dim ns As Object
-    Dim inbox As Object
-    Dim items As Object
-    Dim filtered As Object
-    Dim mail As Object
-    Dim att As Object
-
-    Dim ws As Worksheet
-    Dim logWs As Worksheet
-
-    Dim senderEmail As String
-    Dim savePath As String
-    Dim fromDt As Date
-    Dim toDt As Date
-    Dim folderName As String
-
-    Dim filter As String
-    Dim lastRow As Long
-    Dim fileCount As Long
-    Dim startTime As Double
-
-    On Error GoTo ErrorHandler
-
-    startTime = Timer
-
-    Set ws = Sheets("Dashboard")
-    Set logWs = Sheets("Download Log")
-
-    senderEmail = Trim(ws.Range("C4").Value)
-    fromDt = ws.Range("C5").Value
-    toDt = ws.Range("C6").Value
-    savePath = Trim(ws.Range("C7").Value)
-    folderName = Trim(ws.Range("C8").Value)
-
-    If Right(savePath, 1) <> "\" Then
-        savePath = savePath & "\"
-    End If
-
-    On Error Resume Next
-    Set olApp = GetObject(, "Outlook.Application")
-
-    If olApp Is Nothing Then
-        Set olApp = CreateObject("Outlook.Application")
-    End If
-    On Error GoTo ErrorHandler
-
-    Set ns = olApp.GetNamespace("MAPI")
-    Set inbox = ns.GetDefaultFolder(6)
-
-    If folderName <> "" And LCase(folderName) <> "inbox" Then
-        Set inbox = inbox.Folders(folderName)
-    End If
-
-    Set items = inbox.Items
-    items.Sort "[ReceivedTime]", True
-
-    filter = "[ReceivedTime] >= '" & _
-             Format(fromDt, "mm/dd/yyyy hh:mm AMPM") & _
-             "' AND [ReceivedTime] <= '" & _
-             Format(toDt + 1, "mm/dd/yyyy hh:mm AMPM") & "'"
-
-    Set filtered = items.Restrict(filter)
-
-    fileCount = 0
-
-    For Each mail In filtered
-
-        If TypeName(mail) = "MailItem" Then
-
-            If InStr(1, LCase(mail.SenderEmailAddress), _
-            LCase(senderEmail)) > 0 Then
-
-                If mail.Attachments.Count > 0 Then
-
-                    For Each att In mail.Attachments
-
-                        If LCase(Right(att.FileName, 4)) = ".pdf" Then
-
-                            Dim finalPath As String
-
-                            finalPath = savePath & _
-                            Format(Now, "yyyymmdd_hhnnss_") & _
-                            att.FileName
-
-                            att.SaveAsFile finalPath
-
-                            fileCount = fileCount + 1
-
-                            lastRow = logWs.Cells(logWs.Rows.Count, 1).End(xlUp).Row + 1
-
-                            logWs.Cells(lastRow, 1).Value = lastRow - 1
-                            logWs.Cells(lastRow, 2).Value = Now
-                            logWs.Cells(lastRow, 3).Value = mail.Subject
-                            logWs.Cells(lastRow, 4).Value = mail.SenderEmailAddress
-                            logWs.Cells(lastRow, 5).Value = att.FileName
-                            logWs.Cells(lastRow, 6).Value = "Downloaded"
-                            logWs.Cells(lastRow, 7).Value = finalPath
-
-                        End If
-
-                    Next att
-
-                End If
-
-            End If
-
-        End If
-
-    Next mail
-
-    ws.Range("C22").Value = "Success"
-    ws.Range("C23").Value = fileCount
-    ws.Range("C24").Value = Now
-    ws.Range("C25").Value = Round(Timer - startTime, 2) & " Seconds"
-
-    MsgBox fileCount & " PDFs downloaded successfully."
-
-    Exit Sub
-
-ErrorHandler:
-    ws.Range("C22").Value = "Failed"
-    MsgBox Err.Description
-
-End Sub
+And honestly—this format is much stronger because management can instantly see which exact sub-task is eating time, instead of seeing one vague activity bucket and asking follow-up questions.
