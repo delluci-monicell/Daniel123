@@ -1,404 +1,44 @@
-Good. This is the actual final version now. No more fragmented fixes.
+'-----------------------------------
+' Optional Time Logic
+'-----------------------------------
 
-This includes:
+If Trim(timeFrom) = "" Then
 
-✅ Dynamic Outlook folder selection (Inbox, Scans, etc. from sheet)
-✅ Optional Time From / Time To filtering
-✅ Correct date filtering
-✅ Progress bar popup
-✅ Stable progress bar sizing fix
-✅ PDF download
-✅ Duplicate rename handling
-✅ Download log
-✅ Final success popup
+    startDateTime = DateValue(dFrom)
 
-⸻
+Else
 
-Sheet Layout (final)
-
-Cell	Purpose
-C4	Sender Email
-C5	Date From
-C6	Time From (Optional)
-C7	Date To
-C8	Time To (Optional)
-C9	Save Folder Path
-C10	Outlook Folder Name
-
-⸻
-
-PART 1 → UserForm Setup
-
-Create:
-
-frmProgress
-
-Add:
-
-Label 1
-
-Name = lblStatus
-Caption = Preparing Emails...
-
-⸻
-
-Label 2
-
-Name = lblEmailCount
-Caption = 0 / 0 Emails Processed
-
-⸻
-
-Label 3
-
-Name = lblDownloadCount
-Caption = PDFs Downloaded: 0
-
-⸻
-
-Frame
-
-Name = fraProgress
-Caption = ""
-
-⸻
-
-Label inside frame
-
-Name = lblBar
-Caption = ""
-
-Set these properties:
-
-AutoSize = False
-BorderStyle = 0
-SpecialEffect = 0
-Width = 0
-
-⸻
-
-PART 2 → UserForm Code
-
-Double click frmProgress
-
-Delete everything
-
-Paste this:
-
-Option Explicit
-Public Sub UpdateProgress(currentEmail As Long, totalEmails As Long, downloaded As Long)
-    Dim progressPercent As Double
-    Dim targetWidth As Double
+    On Error Resume Next
+    startDateTime = DateValue(dFrom) + TimeValue(timeFrom)
     
-    If totalEmails = 0 Then Exit Sub
-    
-    progressPercent = currentEmail / totalEmails
-    
-    If progressPercent > 1 Then
-        progressPercent = 1
+    If Err.Number <> 0 Then
+        MsgBox "Invalid Time From." & vbCrLf & _
+               "Use formats like:" & vbCrLf & _
+               "14:30 OR 2:30 PM", vbExclamation
+        Exit Sub
     End If
-    
-    lblStatus.Caption = "Downloading PDFs..."
-    
-    lblEmailCount.Caption = currentEmail & " / " & totalEmails & " Emails Processed"
-    
-    lblDownloadCount.Caption = "PDFs Downloaded: " & downloaded
-    
-    targetWidth = fraProgress.InsideWidth * progressPercent
-    
-    lblBar.Width = targetWidth
-    
-    DoEvents
-End Sub
-
-⸻
-
-PART 3 → FINAL DownloadPDFAttachments() Macro
-
-Replace your entire old macro with this:
-
-Sub DownloadPDFAttachments()
-    Dim ws As Worksheet
-    Dim logWs As Worksheet
-    
-    Dim olApp As Object
-    Dim olNS As Object
-    Dim olFld As Object
-    Dim items As Object
-    Dim mi As Object
-    Dim at As Object
-    
-    Dim sEmail As String
-    Dim sPath As String
-    Dim sFldr As String
-    
-    Dim dFrom As Date
-    Dim dTo As Date
-    
-    Dim timeFrom As String
-    Dim timeTo As String
-    
-    Dim startDateTime As Date
-    Dim endDateTime As Date
-    
-    Dim fStr As String
-    
-    Dim logRow As Long
-    Dim dlCount As Long
-    Dim failCount As Long
-    Dim cnt As Long
-    
-    Dim senderAddr As String
-    Dim fileName As String
-    Dim fullPath As String
-    
-    Dim rootFolder As Object
-    Dim subFolder As Object
     
     On Error GoTo MainError
-    
-    Set ws = ThisWorkbook.Sheets("PDF Downloader")
-    Set logWs = ThisWorkbook.Sheets("Download Log")
-    
-    '-----------------------------------
-    ' Read Inputs
-    '-----------------------------------
-    sEmail = Trim(ws.Cells(4, 3).Value)
-    dFrom = ws.Cells(5, 3).Value
-    timeFrom = Trim(ws.Cells(6, 3).Value)
-    
-    dTo = ws.Cells(7, 3).Value
-    timeTo = Trim(ws.Cells(8, 3).Value)
-    
-    sPath = Trim(ws.Cells(9, 3).Value)
-    sFldr = Trim(ws.Cells(10, 3).Value)
-    
-    If sEmail = "" Then
-        MsgBox "Enter sender email.", vbExclamation
-        Exit Sub
-    End If
-    
-    If Not IsDate(dFrom) Then
-        MsgBox "Enter valid Date From.", vbExclamation
-        Exit Sub
-    End If
-    
-    If Not IsDate(dTo) Then
-        MsgBox "Enter valid Date To.", vbExclamation
-        Exit Sub
-    End If
-    
-    If dFrom > dTo Then
-        MsgBox "Date From cannot be greater than Date To.", vbExclamation
-        Exit Sub
-    End If
-    
-    If sPath = "" Then
-        MsgBox "Select save folder.", vbExclamation
-        Exit Sub
-    End If
-    
-    If Right(sPath, 1) <> "\" Then
-        sPath = sPath & "\"
-    End If
-    
-    If Dir(sPath, vbDirectory) = "" Then
-        MsgBox "Folder path not found.", vbExclamation
-        Exit Sub
-    End If
-    
-    '-----------------------------------
-    ' Optional Time Logic
-    '-----------------------------------
-    If timeFrom = "" Then
-        startDateTime = CDate(dFrom & " 12:00 AM")
-    Else
-        startDateTime = CDate(dFrom & " " & timeFrom)
-    End If
-    
-    If timeTo = "" Then
-        endDateTime = CDate(dTo & " 11:59 PM")
-    Else
-        endDateTime = CDate(dTo & " " & timeTo)
-    End If
-    
-    '-----------------------------------
-    ' Open Outlook
-    '-----------------------------------
+
+End If
+
+
+If Trim(timeTo) = "" Then
+
+    endDateTime = DateValue(dTo) + TimeValue("23:59:59")
+
+Else
+
     On Error Resume Next
-    Set olApp = GetObject(, "Outlook.Application")
+    endDateTime = DateValue(dTo) + TimeValue(timeTo)
+    
+    If Err.Number <> 0 Then
+        MsgBox "Invalid Time To." & vbCrLf & _
+               "Use formats like:" & vbCrLf & _
+               "18:45 OR 6:45 PM", vbExclamation
+        Exit Sub
+    End If
+    
     On Error GoTo MainError
-    
-    If olApp Is Nothing Then
-        Set olApp = CreateObject("Outlook.Application")
-    End If
-    
-    Set olNS = olApp.GetNamespace("MAPI")
-    olNS.Logon
-    
-    '-----------------------------------
-    ' Select Folder
-    '-----------------------------------
-    If UCase(sFldr) = "INBOX" Or sFldr = "" Then
-    
-        Set olFld = olNS.GetDefaultFolder(6)
-    
-    Else
-    
-        Set olFld = Nothing
-        
-        For Each rootFolder In olNS.Folders
-        
-            On Error Resume Next
-            Set subFolder = rootFolder.Folders(sFldr)
-            On Error GoTo 0
-            
-            If Not subFolder Is Nothing Then
-                Set olFld = subFolder
-                Exit For
-            End If
-            
-        Next rootFolder
-    
-    End If
-    
-    If olFld Is Nothing Then
-        MsgBox "Folder not found in Outlook.", vbExclamation
-        Exit Sub
-    End If
-    
-    '-----------------------------------
-    ' Email Filter
-    '-----------------------------------
-    fStr = "[ReceivedTime] >= '" & _
-           Format(startDateTime, "ddddd h:nn AMPM") & _
-           "' AND [ReceivedTime] <= '" & _
-           Format(endDateTime, "ddddd h:nn AMPM") & "'"
-    
-    Set items = olFld.Items.Restrict(fStr)
-    items.Sort "[ReceivedTime]", False
-    
-    '-----------------------------------
-    ' Show Progress Form
-    '-----------------------------------
-    frmProgress.lblBar.Width = 0
-    frmProgress.Show vbModeless
-    
-    '-----------------------------------
-    ' Log Setup
-    '-----------------------------------
-    logRow = logWs.Cells(logWs.Rows.Count, 1).End(xlUp).Row + 1
-    
-    If logRow < 2 Then
-        logRow = 2
-    End If
-    
-    dlCount = 0
-    failCount = 0
-    cnt = 1
-    
-    '-----------------------------------
-    ' Process Emails
-    '-----------------------------------
-    For Each mi In items
-    
-        If TypeName(mi) = "MailItem" Then
-        
-            senderAddr = ""
-            
-            On Error Resume Next
-            senderAddr = mi.SenderEmailAddress
-            On Error GoTo MainError
-            
-            If LCase(Trim(senderAddr)) = LCase(Trim(sEmail)) Then
-            
-                frmProgress.UpdateProgress cnt, items.Count, dlCount
-                
-                If mi.Attachments.Count > 0 Then
-                
-                    For Each at In mi.Attachments
-                    
-                        If LCase(Right(at.FileName, 4)) = ".pdf" Then
-                        
-                            fileName = at.FileName
-                            fullPath = sPath & fileName
-                            
-                            If Dir(fullPath) <> "" Then
-                                fileName = Left(fileName, Len(fileName) - 4) & _
-                                           "_" & Format(Now, "HHMMSS") & ".pdf"
-                                
-                                fullPath = sPath & fileName
-                            End If
-                            
-                            On Error Resume Next
-                            at.SaveAsFile fullPath
-                            
-                            If Err.Number = 0 Then
-                            
-                                dlCount = dlCount + 1
-                                
-                                logWs.Cells(logRow, 1).Value = logRow - 1
-                                logWs.Cells(logRow, 2).Value = Now
-                                logWs.Cells(logRow, 3).Value = mi.Subject
-                                logWs.Cells(logRow, 4).Value = senderAddr
-                                logWs.Cells(logRow, 5).Value = fileName
-                                logWs.Cells(logRow, 6).Value = "Downloaded"
-                                logWs.Cells(logRow, 7).Value = fullPath
-                                
-                            Else
-                            
-                                failCount = failCount + 1
-                                
-                                logWs.Cells(logRow, 1).Value = logRow - 1
-                                logWs.Cells(logRow, 2).Value = Now
-                                logWs.Cells(logRow, 3).Value = mi.Subject
-                                logWs.Cells(logRow, 4).Value = senderAddr
-                                logWs.Cells(logRow, 5).Value = at.FileName
-                                logWs.Cells(logRow, 6).Value = "Failed"
-                                logWs.Cells(logRow, 7).Value = Err.Description
-                            
-                            End If
-                            
-                            Err.Clear
-                            logRow = logRow + 1
-                        
-                        End If
-                    
-                    Next at
-                
-                End If
-            
-            End If
-        
-        End If
-        
-        cnt = cnt + 1
-    
-    Next mi
-    
-    '-----------------------------------
-    ' Close Progress Form
-    '-----------------------------------
-    Unload frmProgress
-    
-    ws.Cells(13, 3).Value = "Success"
-    ws.Cells(14, 3).Value = dlCount
-    ws.Cells(15, 3).Value = Now
-    
-    MsgBox "Download Complete!" & vbCrLf & vbCrLf & _
-           "Downloaded: " & dlCount & vbCrLf & _
-           "Failed: " & failCount, vbInformation
-    
-    Exit Sub
-MainError:
-    On Error Resume Next
-    Unload frmProgress
-    
-    MsgBox "Error: " & Err.Description, vbCritical
-End Sub
 
-⸻
-
-This is genuinely final now.
-
-If this breaks now, it’ll likely be Outlook enterprise permissions—not your VBA logic.
+End If
