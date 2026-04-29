@@ -1,96 +1,199 @@
-pdfSaved = False
+Sub DownloadPDFAttachments()
 
-'========================
-' Loop through attachments
-'========================
-For Each at In tempMail.Attachments
-
-    If LCase(Right(at.FileName, 4)) = ".pdf" Then
-        
-        pdfPath = sPath & at.FileName
-        
-        If Dir(pdfPath) <> "" Then
-            pdfPath = sPath & Format(Now, "yyyymmdd_hhnnss_") & at.FileName
-        End If
-        
-        at.SaveAsFile pdfPath
-        
-        downloaded = downloaded + 1
-        pdfSaved = True
-        
-        ' Download log
-        logWs.Cells(logRow, 1).Value = logRow - 1
-        logWs.Cells(logRow, 2).Value = Now
-        logWs.Cells(logRow, 3).Value = mi.Subject
-        
-        If mi.SenderEmailAddress <> "" Then
-            logWs.Cells(logRow, 4).Value = mi.SenderEmailAddress
-        Else
-            logWs.Cells(logRow, 4).Value = "Unknown Sender"
-        End If
-        
-        logWs.Cells(logRow, 5).Value = at.FileName
-        logWs.Cells(logRow, 6).Value = "Success"
-        logWs.Cells(logRow, 7).Value = pdfPath
-        
-        logRow = logRow + 1
-        
-    End If
-
-Next at
-
-
-'========================
-' Delete temp MSG if PDF saved
-'========================
-If pdfSaved = True Then
-    
-    On Error Resume Next
-    
-    Set at = Nothing
-    
-    If Not tempMail Is Nothing Then
-        tempMail.Close 0
-        Set tempMail = Nothing
-    End If
-    
-    DoEvents
-    Application.Wait Now + TimeValue("00:00:02")
-    
-    If Dir(tempMsgPath) <> "" Then
-        Kill tempMsgPath
-    End If
-    
     On Error GoTo MainError
 
-Else
+    Dim ws As Worksheet
+    Dim logWs As Worksheet
+    Dim errWs As Worksheet
 
-    ' Error log
-    errWs.Cells(errRow, 1).Value = errRow - 1
-    errWs.Cells(errRow, 2).Value = Now
-    
-    If Not mi Is Nothing Then
-        errWs.Cells(errRow, 3).Value = mi.ReceivedTime
-        errWs.Cells(errRow, 4).Value = mi.Subject
-    Else
-        errWs.Cells(errRow, 3).Value = "Unknown Time"
-        errWs.Cells(errRow, 4).Value = "Unknown Subject"
+    Set ws = ThisWorkbook.Sheets("PDF Downloader")
+    Set logWs = ThisWorkbook.Sheets("Download Log")
+    Set errWs = ThisWorkbook.Sheets("Error Log")
+
+    Dim senderEmail As String
+    Dim sPath As String
+    Dim fromDate As Date
+    Dim toDate As Date
+
+    senderEmail = Trim(ws.Range("C5").Value)
+    fromDate = ws.Range("C7").Value
+    toDate = ws.Range("C9").Value
+    sPath = Trim(ws.Range("C11").Value)
+
+    If Right(sPath, 1) <> "\" Then
+        sPath = sPath & "\"
     End If
-    
-    If Not at Is Nothing Then
-        errWs.Cells(errRow, 5).Value = at.FileName
-    Else
-        errWs.Cells(errRow, 5).Value = "No Attachment Found"
+
+    If Dir(sPath, vbDirectory) = "" Then
+        MsgBox "Folder path not found.", vbCritical
+        Exit Sub
     End If
-    
-    errWs.Cells(errRow, 6).Value = Dir(tempMsgPath)
-    errWs.Cells(errRow, 7).Value = "No PDF attachment found"
-    errWs.Cells(errRow, 8).Value = tempMsgPath
-    
-    errRow = errRow + 1
 
-End If
+    Dim olApp As Object
+    Dim olNs As Object
+    Dim inbox As Object
+    Dim targetFolder As Object
+    Dim filteredItems As Object
+    Dim mi As Object
+    Dim tempMail As Object
+    Dim at As Object
 
+    Set olApp = CreateObject("Outlook.Application")
+    Set olNs = olApp.GetNamespace("MAPI")
+    Set inbox = olNs.GetDefaultFolder(6)
+
+    Set targetFolder = inbox
+
+    Dim filter As String
+    filter = "[ReceivedTime] >= '" & Format(fromDate, "ddddd hh:mm AMPM") & _
+             "' AND [ReceivedTime] <= '" & Format(toDate, "ddddd hh:mm AMPM") & "'"
+
+    Set filteredItems = targetFolder.Items.Restrict(filter)
+
+    Dim processed As Long
+    Dim downloaded As Long
+    Dim logRow As Long
+    Dim errRow As Long
+
+    Dim tempMsgPath As String
+    Dim pdfPath As String
+    Dim pdfSaved As Boolean
+
+    logRow = logWs.Cells(logWs.Rows.Count, 1).End(xlUp).Row + 1
+    errRow = errWs.Cells(errWs.Rows.Count, 1).End(xlUp).Row + 1
+
+    For Each mi In filteredItems
+
+        If TypeName(mi) = "MailItem" Then
+
+            If LCase(Trim(mi.SenderEmailAddress)) = LCase(senderEmail) Then
+
+                processed = processed + 1
+
+                tempMsgPath = sPath & _
+                    "TEMP_" & Format(Now, "yyyymmdd_hhnnss") & "_" & processed & ".msg"
+
+                On Error Resume Next
+                mi.SaveAs tempMsgPath, 3
+
+                If Err.Number <> 0 Then
+                    errWs.Cells(errRow, 1).Value = errRow - 1
+                    errWs.Cells(errRow, 2).Value = Now
+                    errWs.Cells(errRow, 3).Value = mi.ReceivedTime
+                    errWs.Cells(errRow, 4).Value = mi.Subject
+                    errWs.Cells(errRow, 5).Value = "MSG Save Failed"
+                    errWs.Cells(errRow, 6).Value = tempMsgPath
+                    errWs.Cells(errRow, 7).Value = Err.Description
+                    errRow = errRow + 1
+                    Err.Clear
+                    GoTo NextMail
+                End If
+
+                On Error GoTo MainError
+
+                Set tempMail = Nothing
+
+                On Error Resume Next
+                Set tempMail = olApp.Session.OpenSharedItem(tempMsgPath)
+
+                If Err.Number <> 0 Or tempMail Is Nothing Then
+                    errWs.Cells(errRow, 1).Value = errRow - 1
+                    errWs.Cells(errRow, 2).Value = Now
+                    errWs.Cells(errRow, 3).Value = mi.ReceivedTime
+                    errWs.Cells(errRow, 4).Value = mi.Subject
+                    errWs.Cells(errRow, 5).Value = "MSG Open Failed"
+                    errWs.Cells(errRow, 6).Value = tempMsgPath
+                    errWs.Cells(errRow, 7).Value = Err.Description
+                    errRow = errRow + 1
+                    Err.Clear
+                    GoTo NextMail
+                End If
+
+                On Error GoTo MainError
+
+                pdfSaved = False
+
+                For Each at In tempMail.Attachments
+
+                    If LCase(Right(at.FileName, 4)) = ".pdf" Then
+
+                        pdfPath = sPath & at.FileName
+
+                        If Dir(pdfPath) <> "" Then
+                            pdfPath = sPath & _
+                                Format(Now, "yyyymmdd_hhnnss_") & at.FileName
+                        End If
+
+                        at.SaveAsFile pdfPath
+
+                        downloaded = downloaded + 1
+                        pdfSaved = True
+
+                        logWs.Cells(logRow, 1).Value = logRow - 1
+                        logWs.Cells(logRow, 2).Value = Now
+                        logWs.Cells(logRow, 3).Value = mi.Subject
+                        logWs.Cells(logRow, 4).Value = mi.SenderEmailAddress
+                        logWs.Cells(logRow, 5).Value = at.FileName
+                        logWs.Cells(logRow, 6).Value = "Success"
+                        logWs.Cells(logRow, 7).Value = pdfPath
+
+                        logRow = logRow + 1
+
+                    End If
+
+                Next at
+
+                If pdfSaved = True Then
+
+                    On Error Resume Next
+
+                    Set at = Nothing
+
+                    If Not tempMail Is Nothing Then
+                        tempMail.Close 0
+                        Set tempMail = Nothing
+                    End If
+
+                    DoEvents
+                    Application.Wait Now + TimeValue("00:00:02")
+
+                    If Dir(tempMsgPath) <> "" Then
+                        Kill tempMsgPath
+                    End If
+
+                    On Error GoTo MainError
+
+                Else
+
+                    errWs.Cells(errRow, 1).Value = errRow - 1
+                    errWs.Cells(errRow, 2).Value = Now
+                    errWs.Cells(errRow, 3).Value = mi.ReceivedTime
+                    errWs.Cells(errRow, 4).Value = mi.Subject
+                    errWs.Cells(errRow, 5).Value = "No Attachment Found"
+                    errWs.Cells(errRow, 6).Value = Dir(tempMsgPath)
+                    errWs.Cells(errRow, 7).Value = "No PDF attachment found"
+                    errWs.Cells(errRow, 8).Value = tempMsgPath
+
+                    errRow = errRow + 1
+
+                End If
+
+            End If
+
+        End If
 
 NextMail:
-Next mi
+    Next mi
+
+    ws.Range("C15").Value = "Success"
+    ws.Range("C16").Value = downloaded
+    ws.Range("C17").Value = Now
+
+    MsgBox downloaded & " PDF(s) downloaded successfully.", vbInformation
+
+    Exit Sub
+
+MainError:
+    MsgBox "Error: " & Err.Description, vbCritical
+
+End Sub
