@@ -1,3 +1,6 @@
+Here are the two complete final modules:
+MODULE 1 — MainMacros (replace everything):
+
 Option Explicit
 
 Sub DownloadAttachments()
@@ -30,6 +33,10 @@ Sub DownloadAttachments()
         MsgBox "Save folder not found: " & sPath, vbCritical
         Exit Sub
     End If
+
+    '=== START TIMER ===
+    Dim startTime As Double
+    startTime = Timer
 
     '=== CONNECT OUTLOOK ===
     Dim olApp As Object
@@ -80,7 +87,7 @@ Sub DownloadAttachments()
         Exit Sub
     End If
 
-    '=== FILTER ===
+    '=== DASL FILTER ===
     Dim filter As String
     filter = "@SQL=""urn:schemas:httpmail:datereceived"" >= '" & _
              Format(fromDateTime, "yyyy-mm-ddThh:mm:ss") & "'" & _
@@ -95,10 +102,9 @@ Sub DownloadAttachments()
     Set filteredItems = allItems.Restrict(filter)
 
     '=== FAST PRE-COUNT ===
-    ' Only reads one property — same speed as original first macro
     frmProgress.lblStatus.Caption = "Counting emails..."
     frmProgress.lblEmailCount.Caption = "Please wait..."
-    frmProgress.lblDownloadCount.Caption = "PDFs Downloaded: 0"
+    frmProgress.lblDownloadCount.Caption = "Attachments Downloaded: 0"
     frmProgress.lblBar.Width = 0
     frmProgress.Show vbModeless
     DoEvents
@@ -115,7 +121,7 @@ Sub DownloadAttachments()
         End If
     Next mi
 
-    frmProgress.lblStatus.Caption = "Starting..."
+    frmProgress.lblStatus.Caption = "Starting download..."
     frmProgress.lblEmailCount.Caption = "0 / " & totalEmails & " Emails Processed"
     DoEvents
 
@@ -125,11 +131,18 @@ Sub DownloadAttachments()
     logRow = logWs.Cells(logWs.Rows.Count, 1).End(xlUp).Row + 1
     errRow = errWs.Cells(errWs.Rows.Count, 1).End(xlUp).Row + 1
 
+    '=== COUNTERS ===
     Dim downloaded As Long
     Dim processed As Long
     downloaded = 0
     processed = 0
 
+    '=== TEMP FILE TRACKER ===
+    Dim tempFiles() As String
+    Dim tempFileCount As Long
+    tempFileCount = 0
+
+    '=== VARIABLES ===
     Dim tempMail As Object
     Dim at As Object
     Dim tempMsgPath As String
@@ -145,7 +158,7 @@ Sub DownloadAttachments()
 
         processed = processed + 1
 
-        '--- Progress bar ---
+        '--- Update progress ---
         progressPct = processed / totalEmails
         If progressPct > 1 Then progressPct = 1
         frmProgress.lblStatus.Caption = "Processing " & processed & " of " & totalEmails
@@ -161,7 +174,7 @@ Sub DownloadAttachments()
             GoTo NextMail
         End If
 
-        '--- Save temp MSG to sPath (same as original fast macro) ---
+        '--- Save temp MSG ---
         tempMsgPath = sPath & "TEMP_" & Format(Now, "yyyymmdd_hhnnss") & _
                       "_" & processed & ".msg"
 
@@ -191,7 +204,7 @@ Sub DownloadAttachments()
 
         pdfSaved = False
 
-        '--- Save attachments + log simultaneously ---
+        '--- Save attachments ---
         For Each at In tempMail.Attachments
             savePath = sPath & at.FileName
             If Dir(savePath) <> "" Then
@@ -217,7 +230,7 @@ Sub DownloadAttachments()
                 logWs.Cells(logRow, 6).Value = "Success"
                 logWs.Cells(logRow, 7).Value = savePath
                 logRow = logRow + 1
-                frmProgress.lblDownloadCount.Caption = "PDFs Downloaded: " & downloaded
+                frmProgress.lblDownloadCount.Caption = "Attachments Downloaded: " & downloaded
                 DoEvents
             End If
             On Error GoTo 0
@@ -230,73 +243,87 @@ Sub DownloadAttachments()
         End If
 
 CleanTemp:
-        '=== THE ONLY FIX FROM ORIGINAL — PROPER TEMP MSG DELETION ===
+        '--- Close temp MSG, store path for cleanup later ---
         On Error Resume Next
-
-        ' Step 1 — release all object references first
         Set at = Nothing
         If Not tempMail Is Nothing Then
             tempMail.Close 0
             Set tempMail = Nothing
         End If
-
-        ' Step 2 — let Outlook release the file handle
-        DoEvents
-        Application.Wait Now + TimeValue("00:00:02")
         DoEvents
 
-        ' Step 3 — retry delete up to 3 times
-        Dim retry As Integer
-        retry = 0
-        Do While Dir(tempMsgPath) <> "" And retry < 3
-            Err.Clear
-            Kill tempMsgPath
-            If Err.Number <> 0 Then
-                retry = retry + 1
-                Application.Wait Now + TimeValue("00:00:01")
-                DoEvents
-            Else
-                Exit Do
-            End If
-        Loop
-
+        '--- Store temp path for post-success cleanup ---
+        If tempMsgPath <> "" Then
+            tempFileCount = tempFileCount + 1
+            ReDim Preserve tempFiles(1 To tempFileCount)
+            tempFiles(tempFileCount) = tempMsgPath
+        End If
         On Error GoTo 0
 
 NextMail:
     Next mi
 
-    '=== DONE ===
+    '=== FINAL PROGRESS UPDATE ===
     frmProgress.lblStatus.Caption = "Completed!"
     frmProgress.lblEmailCount.Caption = processed & " / " & totalEmails & " Emails Processed"
-    frmProgress.lblDownloadCount.Caption = "PDFs Downloaded: " & downloaded
+    frmProgress.lblDownloadCount.Caption = "Attachments Downloaded: " & downloaded
     frmProgress.lblBar.Width = frmProgress.fraProgress.InsideWidth
     DoEvents
-    Application.Wait Now + TimeValue("00:00:02")
+    Application.Wait Now + TimeValue("00:00:01")
     Unload frmProgress
 
+    '=== ELAPSED TIME ===
+    Dim elapsedSec As Long
+    elapsedSec = CLng(Timer - startTime)
+    Dim hrs As Long
+    Dim mins As Long
+    Dim secs As Long
+    hrs = elapsedSec \ 3600
+    mins = (elapsedSec Mod 3600) \ 60
+    secs = elapsedSec Mod 60
+
+    '=== UPDATE SHEET ===
     ws.Range("C15").Value = "Success"
     ws.Range("C16").Value = downloaded
     ws.Range("C17").Value = Now
+    ws.Range("C18").Value = Format(hrs, "00") & "h " & _
+                            Format(mins, "00") & "m " & _
+                            Format(secs, "00") & "s"
 
+    '=== SUCCESS MESSAGE ===
     MsgBox downloaded & " attachment(s) downloaded from " & _
            processed & " of " & totalEmails & " matching email(s)." & _
-           vbNewLine & vbNewLine & "Saved to: " & sPath, _
+           vbNewLine & vbNewLine & _
+           "Time taken: " & Format(hrs, "00") & "h " & _
+           Format(mins, "00") & "m " & Format(secs, "00") & "s" & _
+           vbNewLine & vbNewLine & _
+           "Saved to: " & sPath, _
            vbInformation, "Download Complete"
+
+    '=== TRIGGER CLEANUP AFTER USER CLICKS OK ===
+    If tempFileCount > 0 Then
+        Call CleanupTempFiles(tempFiles, tempFileCount)
+    End If
 
     Exit Sub
 
 ReadError:
+    ws.Range("C15").Value = "Failed"
+    ws.Range("C17").Value = Now
     MsgBox "Error reading settings. Check C4 to C10." & vbNewLine & _
            Err.Description, vbCritical
     Exit Sub
 
 OutlookError:
+    ws.Range("C15").Value = "Failed"
+    ws.Range("C17").Value = Now
     MsgBox "Cannot connect to Outlook. Make sure it is open." & vbNewLine & _
            Err.Description, vbCritical
     Exit Sub
 
 End Sub
 
+'=== LOG ERROR HELPER ===
 Sub LogError(errWs As Worksheet, errRow As Long, macroTime As Date, _
              receivedTime As Variant, subject As String, attachName As String, _
              msgPath As String, reason As String, fullPath As String)
@@ -309,3 +336,71 @@ Sub LogError(errWs As Worksheet, errRow As Long, macroTime As Date, _
     errWs.Cells(errRow, 7).Value = reason
     errWs.Cells(errRow, 8).Value = fullPath
 End Sub
+
+
+MODULE 2 — Add a new module, name it CleanupModule, paste this:
+
+Option Explicit
+
+Sub CleanupTempFiles(tempFiles() As String, tempFileCount As Long)
+
+    Dim i As Long
+    Dim retry As Integer
+    Dim deleteFailed As Long
+    Dim failedList As String
+    deleteFailed = 0
+    failedList = ""
+
+    For i = 1 To tempFileCount
+
+        If tempFiles(i) = "" Then GoTo NextFile
+        If Dir(tempFiles(i)) = "" Then GoTo NextFile
+
+        retry = 0
+
+        On Error Resume Next
+        Do While Dir(tempFiles(i)) <> "" And retry < 5
+            Err.Clear
+            Kill tempFiles(i)
+            If Err.Number <> 0 Then
+                retry = retry + 1
+                Application.Wait Now + TimeValue("00:00:01")
+                DoEvents
+            Else
+                Exit Do
+            End If
+        Loop
+        On Error GoTo 0
+
+        If Dir(tempFiles(i)) <> "" Then
+            deleteFailed = deleteFailed + 1
+            failedList = failedList & tempFiles(i) & vbNewLine
+        End If
+
+NextFile:
+    Next i
+
+    If deleteFailed > 0 Then
+        MsgBox deleteFailed & " temp file(s) could not be deleted." & _
+               vbNewLine & vbNewLine & _
+               "Please manually delete these files:" & _
+               vbNewLine & failedList, _
+               vbExclamation, "Cleanup Warning"
+    End If
+
+End Sub
+
+
+How It Works Now
+
+
+
+|Step|What Happens                                                 |
+|----|-------------------------------------------------------------|
+|1   |Macro runs, downloads all attachments at full speed          |
+|2   |No waiting during main loop — temp paths stored in array     |
+|3   |Progress form shows live counts                              |
+|4   |Success message shows — download count, time taken, save path|
+|5   |User clicks OK                                               |
+|6   |CleanupModule runs — deletes all temp MSGs with retries      |
+|7   |If any fail — shows exactly which files need manual deletion |
