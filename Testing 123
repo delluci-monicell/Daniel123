@@ -52,13 +52,13 @@ Sub DownloadPDFAttachments()
     finalFrom = fromDate + fromTime
     finalTo = toDate + toTime
 
-    '-------------------------------
+    '-----------------------------------
     ' Open Outlook
-    '-------------------------------
+    '-----------------------------------
     Dim olApp As Object
     Dim olNamespace As Object
-    Dim rootFolder As Object
     Dim targetFolder As Object
+    Dim mailbox As Object
 
     On Error Resume Next
     Set olApp = GetObject(, "Outlook.Application")
@@ -69,15 +69,25 @@ Sub DownloadPDFAttachments()
     On Error GoTo MainError
 
     Set olNamespace = olApp.GetNamespace("MAPI")
-    Set rootFolder = olNamespace.Folders.Item(1)
 
-    Set targetFolder = FindOutlookFolder(rootFolder, folderName)
+    Set targetFolder = Nothing
+
+    For Each mailbox In olNamespace.Folders
+
+        Set targetFolder = FindOutlookFolder(mailbox, folderName)
+
+        If Not targetFolder Is Nothing Then Exit For
+
+    Next mailbox
 
     If targetFolder Is Nothing Then
         MsgBox "Outlook folder not found: " & folderName, vbCritical
         Exit Sub
     End If
 
+    '-----------------------------------
+    ' Filter by Date
+    '-----------------------------------
     Dim items As Object
     Dim filteredItems As Object
 
@@ -93,9 +103,9 @@ Sub DownloadPDFAttachments()
         Exit Sub
     End If
 
-    '-------------------------------
+    '-----------------------------------
     ' Progress Form
-    '-------------------------------
+    '-----------------------------------
     frmProgress.lblStatus.Caption = "Preparing Emails..."
     frmProgress.lblEmailCount.Caption = "0 / " & filteredItems.Count & " Emails Processed"
     frmProgress.lblDownloadedCount.Caption = "PDFs Downloaded: 0"
@@ -104,9 +114,9 @@ Sub DownloadPDFAttachments()
     frmProgress.Show vbModeless
     DoEvents
 
-    '-------------------------------
+    '-----------------------------------
     ' Logging
-    '-------------------------------
+    '-----------------------------------
     Dim logRow As Long
     Dim errRow As Long
 
@@ -128,6 +138,7 @@ Sub DownloadPDFAttachments()
 
         If TypeName(mi) = "MailItem" Then
 
+            ' STRICT sender filter
             If LCase(Trim(mi.SenderEmailAddress)) <> senderEmail Then
                 GoTo NextMail
             End If
@@ -146,11 +157,12 @@ Sub DownloadPDFAttachments()
             DoEvents
 
             tempMsgPath = savePath & _
-                "TEMP_" & Format(Now, "yyyymmdd_hhnnss") & "_" & processed & ".msg"
+                "TEMP_" & Format(Now, "yyyymmdd_hhnnss") & _
+                "_" & processed & ".msg"
 
             pdfSaved = False
 
-            ' Save email
+            ' Save Email
             On Error Resume Next
             mi.SaveAs tempMsgPath, 3
 
@@ -165,7 +177,7 @@ Sub DownloadPDFAttachments()
             End If
             On Error GoTo MainError
 
-            ' Open saved msg
+            ' Open Saved Email
             Set tempMail = Nothing
 
             On Error Resume Next
@@ -191,7 +203,7 @@ Sub DownloadPDFAttachments()
 
                     If Dir(pdfPath) <> "" Then
                         pdfPath = savePath & _
-                        Format(Now, "yyyymmdd_hhnnss_") & at.FileName
+                            Format(Now, "yyyymmdd_hhnnss_") & at.FileName
                     End If
 
                     On Error Resume Next
@@ -205,7 +217,7 @@ Sub DownloadPDFAttachments()
                         errWs.Cells(errRow, 2).Value = mi.Subject
                         errWs.Cells(errRow, 3).Value = mi.ReceivedTime
                         errWs.Cells(errRow, 4).Value = _
-                        "PDF Save Failed - " & at.FileName
+                            "PDF Save Failed - " & at.FileName
                         errRow = errRow + 1
                         Err.Clear
                     End If
@@ -216,7 +228,7 @@ Sub DownloadPDFAttachments()
 
             Next at
 
-            ' Delete temp msg only if success
+            ' Delete temp email only if success
             If pdfSaved = True Then
 
                 On Error Resume Next
@@ -230,16 +242,14 @@ Sub DownloadPDFAttachments()
                 On Error GoTo MainError
 
             Else
-
                 errWs.Cells(errRow, 1).Value = Now
                 errWs.Cells(errRow, 2).Value = mi.Subject
                 errWs.Cells(errRow, 3).Value = mi.ReceivedTime
                 errWs.Cells(errRow, 4).Value = "No PDF extracted"
                 errRow = errRow + 1
-
             End If
 
-            ' Download log
+            ' Download Log
             logWs.Cells(logRow, 1).Value = mi.Subject
             logWs.Cells(logRow, 2).Value = mi.ReceivedTime
             logWs.Cells(logRow, 3).Value = downloaded
@@ -281,9 +291,7 @@ Function FindOutlookFolder(parentFolder As Object, targetName As String) As Obje
 
         Set FindOutlookFolder = FindOutlookFolder(subFolder, targetName)
 
-        If Not FindOutlookFolder Is Nothing Then
-            Exit Function
-        End If
+        If Not FindOutlookFolder Is Nothing Then Exit Function
 
     Next subFolder
 
