@@ -1,57 +1,18 @@
-If pdfSaved = True Then
+errRow = errRow + 1
 
-    On Error Resume Next
+End If                 ' closes: If Not at Is Nothing Then / Else block
 
-    Set at = Nothing
-    Set tempMail = Nothing
-
-    DoEvents
-    Application.Wait Now + TimeValue("00:00:03")
-
-    If Dir(tempMsgPath) <> "" Then
-        Kill tempMsgPath
-    End If
-
-    If Dir(tempMsgPath) <> "" Then
-        errWs.Cells(errRow, 1).Value = errRow - 1
-        errWs.Cells(errRow, 2).Value = Now
-        errWs.Cells(errRow, 3).Value = mi.ReceivedTime
-        errWs.Cells(errRow, 4).Value = mi.Subject
-        errWs.Cells(errRow, 5).Value = "Temp MSG Delete Failed"
-        errWs.Cells(errRow, 6).Value = Dir(tempMsgPath)
-        errWs.Cells(errRow, 7).Value = "File still locked"
-        errWs.Cells(errRow, 8).Value = tempMsgPath
-        errRow = errRow + 1
-    End If
-
-    On Error GoTo MainError
-
-Else
-
-    errWs.Cells(errRow, 1).Value = errRow - 1
-    errWs.Cells(errRow, 2).Value = Now
-
-    If Not mi Is Nothing Then
-        errWs.Cells(errRow, 3).Value = mi.ReceivedTime
-        errWs.Cells(errRow, 4).Value = mi.Subject
-    Else
-        errWs.Cells(errRow, 3).Value = "Unknown Time"
-        errWs.Cells(errRow, 4).Value = "Unknown Subject"
-    End If
-
-    If Not at Is Nothing Then
-        errWs.Cells(errRow, 5).Value = at.FileName
-    Else
-        errWs.Cells(errRow, 5).Value = "No Attachment Found"
-    End If
-
-    errWs.Cells(errRow, 6).Value = Dir(tempMsgPath)
-    errWs.Cells(errRow, 7).Value = "No PDF attachment found"
-    errWs.Cells(errRow, 8).Value = tempMsgPath
-
-    errRow = errRow + 1
-
-End If
+End If                 ' closes: If TypeName(mi) = "MailItem" Then
 
 NextMail:
-Next mi
+Next mi                ' closes: For Each mi In filteredItems
+
+Unload frmProgress
+
+ws.Range("C15").Value = "Success"
+ws.Range("C16").Value = downloaded
+ws.Range("C17").Value = Now
+
+MsgBox downloaded & " PDF(s) downloaded successfully.", vbInformation
+
+Exit Sub
