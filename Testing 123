@@ -1,24 +1,24 @@
+If pdfSaved = True Then
+    
+    On Error Resume Next
+    
+    'release attachment object
+    Set at = Nothing
+    
+    'release temp mail object
+    If Not tempMail Is Nothing Then
+        tempMail.Close 0
+        Set tempMail = Nothing
+    End If
+    
+    DoEvents
+    
+    Application.Wait Now + TimeValue("00:00:02")
+    
+    If Dir(tempMsgPath) <> "" Then
+        Kill tempMsgPath
+    End If
+    
+    On Error GoTo MainError
+
 Else
-    errWs.Cells(errRow, 1).Value = errRow - 1
-    errWs.Cells(errRow, 2).Value = Now
-
-    If Not mi Is Nothing Then
-        errWs.Cells(errRow, 3).Value = mi.ReceivedTime
-        errWs.Cells(errRow, 4).Value = mi.Subject
-    Else
-        errWs.Cells(errRow, 3).Value = "Unknown Time"
-        errWs.Cells(errRow, 4).Value = "Unknown Subject"
-    End If
-
-    If Not at Is Nothing Then
-        errWs.Cells(errRow, 5).Value = at.fileName
-    Else
-        errWs.Cells(errRow, 5).Value = "No Attachment Found"
-    End If
-
-    errWs.Cells(errRow, 6).Value = Dir(tempMsgPath)   'MSG file name only
-    errWs.Cells(errRow, 7).Value = "No PDF attachment found"
-    errWs.Cells(errRow, 8).Value = tempMsgPath        'full path
-
-    errRow = errRow + 1
-End If
