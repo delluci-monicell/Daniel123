@@ -1,24 +1,74 @@
-    '=== FIND TARGET FOLDER ===
+Option Explicit
+
+Sub DownloadAttachments()
+
+    '=== SHEETS ===
+    Dim ws As Worksheet
+    Dim logWs As Worksheet
+    Dim errWs As Worksheet
+    Set ws = ThisWorkbook.Sheets("PDF Downloader")
+    Set logWs = ThisWorkbook.Sheets("Download Log")
+    Set errWs = ThisWorkbook.Sheets("Error Log")
+
+    '=== READ SETTINGS ===
+    Dim senderEmail As String
+    Dim sPath As String
+    Dim outlookFolder As String
+    Dim fromDateTime As Date
+    Dim toDateTime As Date
+
+    On Error GoTo ReadError
+    senderEmail = Trim(ws.Range("C4").Value)
+    sPath = Trim(ws.Range("C9").Value)
+    outlookFolder = Trim(ws.Range("C10").Value)
+
+    Dim fromDate As Date
+    Dim fromTime As Date
+    Dim toDate As Date
+    Dim toTime As Date
+
+    fromDate = CDate(ws.Range("C5").Value)
+    fromTime = CDate(ws.Range("C6").Value)
+    toDate = CDate(ws.Range("C7").Value)
+    toTime = CDate(ws.Range("C8").Value)
+
+    fromDateTime = fromDate + fromTime
+    toDateTime = toDate + toTime
+    On Error GoTo 0
+
+    '=== VALIDATE PATH ===
+    If Right(sPath, 1) <> "\" Then sPath = sPath & "\"
+    If Dir(sPath, vbDirectory) = "" Then
+        MsgBox "Save folder not found: " & sPath, vbCritical
+        Exit Sub
+    End If
+
+    '=== CONNECT OUTLOOK ===
+    Dim olApp As Object
+    Dim olNs As Object
+    On Error GoTo OutlookError
+    Set olApp = CreateObject("Outlook.Application")
+    Set olNs = olApp.GetNamespace("MAPI")
+    olNs.Logon
+    On Error GoTo 0
+
+    '=== FIND FOLDER ===
     Dim targetFolder As Object
-    Dim rootFolder As Object
+    Dim mb As Object
     Dim f As Object
     Dim subF As Object
     Dim found As Boolean
     found = False
 
-    ' Loop through all mailboxes directly via Folders collection
-    Dim mb As Object
     For Each mb In olNs.Folders
-        ' Check direct children of each mailbox
         For Each f In mb.Folders
-            If LCase(Trim(f.Name)) = LCase(Trim(outlookFolder)) Then
+            If LCase(Trim(f.Name)) = LCase(outlookFolder) Then
                 Set targetFolder = f
                 found = True
                 Exit For
             End If
-            ' Check one level deeper
             For Each subF In f.Folders
-                If LCase(Trim(subF.Name)) = LCase(Trim(outlookFolder)) Then
+                If LCase(Trim(subF.Name)) = LCase(outlookFolder) Then
                     Set targetFolder = subF
                     found = True
                     Exit For
@@ -30,16 +80,221 @@
     Next mb
 
     If Not found Then
-        ' List all folders for diagnosis
         Dim folderList As String
         folderList = ""
         For Each mb In olNs.Folders
-            folderList = folderList & ">> " & mb.Name & vbNewLine
             For Each f In mb.Folders
                 folderList = folderList & "  - " & f.Name & vbNewLine
             Next f
         Next mb
-        MsgBox "Folder '" & outlookFolder & "' not found." & vbNewLine & vbNewLine & _
-               "Folders found:" & vbNewLine & folderList, vbCritical
+        MsgBox "Folder '" & outlookFolder & "' not found." & vbNewLine & _
+               "Available folders:" & vbNewLine & folderList, vbCritical
         Exit Sub
     End If
+
+    '=== DATE FILTER ===
+    ' Use DASL filter for reliable date filtering regardless of locale
+    Dim filterFrom As String
+    Dim filterTo As String
+    filterFrom = Format(fromDateTime, "yyyy-mm-ddThh:mm:ss")
+    filterTo = Format(toDateTime, "yyyy-mm-ddThh:mm:ss")
+
+    Dim filter As String
+    filter = "@SQL=""urn:schemas:httpmail:datereceived"" >= '" & filterFrom & "'" & _
+             " AND ""urn:schemas:httpmail:datereceived"" <= '" & filterTo & "'"
+
+    Dim filteredItems As Object
+    Set filteredItems = targetFolder.Items.Restrict(filter)
+
+    '=== COUNT TOTAL FOR PROGRESS BAR ===
+    Dim totalEmails As Long
+    totalEmails = 0
+    Dim mi As Object
+    Dim miEmail As String
+
+    For Each mi In filteredItems
+        If TypeName(mi) = "MailItem" Then
+            miEmail = ""
+            On Error Resume Next
+            miEmail = mi.SenderEmailAddress
+            If InStr(miEmail, "@") = 0 Then
+                miEmail = mi.Sender.GetExchangeUser.PrimarySmtpAddress
+            End If
+            On Error GoTo 0
+            If LCase(Trim(miEmail)) = LCase(senderEmail) Then
+                totalEmails = totalEmails + 1
+            End If
+        End If
+    Next mi
+
+    '=== SHOW PROGRESS FORM ===
+    frmProgress.lblStatus.Caption = "Preparing Emails..."
+    frmProgress.lblEmailCount.Caption = "0 / " & totalEmails & " Emails Processed"
+    frmProgress.lblDownloadCount.Caption = "PDFs Downloaded: 0"
+    frmProgress.lblBar.Width = 0
+    frmProgress.Show vbModeless
+    DoEvents
+
+    '=== LOG COUNTERS ===
+    Dim logRow As Long
+    Dim errRow As Long
+    logRow = logWs.Cells(logWs.Rows.Count, 1).End(xlUp).Row + 1
+    errRow = errWs.Cells(errWs.Rows.Count, 1).End(xlUp).Row + 1
+
+    Dim downloaded As Long
+    Dim processed As Long
+    downloaded = 0
+    processed = 0
+
+    '=== LOOP EMAILS ===
+    Dim tempMail As Object
+    Dim at As Object
+    Dim tempMsgPath As String
+    Dim savePath As String
+    Dim pdfSaved As Boolean
+
+    For Each mi In filteredItems
+
+        If TypeName(mi) <> "MailItem" Then GoTo NextMail
+
+        miEmail = ""
+        On Error Resume Next
+        miEmail = mi.SenderEmailAddress
+        If InStr(miEmail, "@") = 0 Then
+            miEmail = mi.Sender.GetExchangeUser.PrimarySmtpAddress
+        End If
+        On Error GoTo 0
+
+        If LCase(Trim(miEmail)) <> LCase(senderEmail) Then GoTo NextMail
+
+        processed = processed + 1
+
+        '=== UPDATE PROGRESS ===
+        frmProgress.UpdateProgress processed, totalEmails, downloaded
+        DoEvents
+
+        '=== SAVE TEMP MSG ===
+        tempMsgPath = sPath & "TEMP_" & Format(Now, "yyyymmdd_hhnnss") & "_" & processed & ".msg"
+
+        On Error Resume Next
+        mi.SaveAs tempMsgPath, 3
+        If Err.Number <> 0 Then
+            Call LogError(errWs, errRow, Now, mi.ReceivedTime, mi.Subject, "", tempMsgPath, "MSG Save Failed: " & Err.Description, "")
+            errRow = errRow + 1
+            Err.Clear
+            GoTo NextMail
+        End If
+        On Error GoTo 0
+
+        '=== OPEN TEMP MSG ===
+        Set tempMail = Nothing
+        On Error Resume Next
+        Set tempMail = olApp.Session.OpenSharedItem(tempMsgPath)
+        If Err.Number <> 0 Or tempMail Is Nothing Then
+            Call LogError(errWs, errRow, Now, mi.ReceivedTime, mi.Subject, "", tempMsgPath, "MSG Open Failed: " & Err.Description, "")
+            errRow = errRow + 1
+            Err.Clear
+            GoTo CleanTemp
+        End If
+        On Error GoTo 0
+
+        pdfSaved = False
+
+        '=== SAVE ATTACHMENTS ===
+        For Each at In tempMail.Attachments
+            savePath = sPath & at.FileName
+            If Dir(savePath) <> "" Then
+                savePath = sPath & Format(Now, "yyyymmdd_hhnnss_") & processed & "_" & at.FileName
+            End If
+
+            On Error Resume Next
+            at.SaveAsFile savePath
+            If Err.Number <> 0 Then
+                Call LogError(errWs, errRow, Now, mi.ReceivedTime, mi.Subject, at.FileName, tempMsgPath, "Save Failed: " & Err.Description, savePath)
+                errRow = errRow + 1
+                Err.Clear
+            Else
+                downloaded = downloaded + 1
+                pdfSaved = True
+                logWs.Cells(logRow, 1).Value = logRow - 1
+                logWs.Cells(logRow, 2).Value = Now
+                logWs.Cells(logRow, 3).Value = mi.Subject
+                logWs.Cells(logRow, 4).Value = miEmail
+                logWs.Cells(logRow, 5).Value = at.FileName
+                logWs.Cells(logRow, 6).Value = "Success"
+                logWs.Cells(logRow, 7).Value = savePath
+                logRow = logRow + 1
+                '=== UPDATE DOWNLOAD COUNT ON FORM ===
+                frmProgress.lblDownloadCount.Caption = "PDFs Downloaded: " & downloaded
+                DoEvents
+            End If
+            On Error GoTo 0
+        Next at
+
+        If pdfSaved = False Then
+            Call LogError(errWs, errRow, Now, mi.ReceivedTime, mi.Subject, "", tempMsgPath, "No Attachments Found", "")
+            errRow = errRow + 1
+        End If
+
+CleanTemp:
+        On Error Resume Next
+        If Not tempMail Is Nothing Then
+            tempMail.Close 0
+            Set tempMail = Nothing
+        End If
+        DoEvents
+        Application.Wait Now + TimeValue("00:00:02")
+        If Dir(tempMsgPath) <> "" Then Kill tempMsgPath
+        On Error GoTo 0
+
+NextMail:
+    Next mi
+
+    '=== FINAL PROGRESS UPDATE ===
+    frmProgress.UpdateProgress totalEmails, totalEmails, downloaded
+    frmProgress.lblStatus.Caption = "Completed!"
+    DoEvents
+    Application.Wait Now + TimeValue("00:00:01")
+
+    '=== CLOSE FORM ===
+    Unload frmProgress
+
+    '=== UPDATE SHEET STATUS ===
+    ws.Range("C15").Value = "Success"
+    ws.Range("C16").Value = downloaded
+    ws.Range("C17").Value = Now
+
+    '=== SUCCESS MESSAGE ===
+    MsgBox downloaded & " attachment(s) downloaded from " & processed & _
+           " matching email(s)." & vbNewLine & vbNewLine & _
+           "Save folder: " & sPath, vbInformation, "Download Complete"
+
+    Exit Sub
+
+ReadError:
+    MsgBox "Error reading settings from sheet." & vbNewLine & _
+           "Check cells C4 to C10 are filled correctly." & vbNewLine & _
+           Err.Description, vbCritical
+    Exit Sub
+
+OutlookError:
+    MsgBox "Could not connect to Outlook." & vbNewLine & _
+           "Make sure Outlook is open and try again." & vbNewLine & _
+           Err.Description, vbCritical
+    Exit Sub
+
+End Sub
+
+'=== HELPER: WRITE ERROR ROW ===
+Sub LogError(errWs As Worksheet, errRow As Long, macroTime As Date, _
+             receivedTime As Variant, subject As String, attachName As String, _
+             msgPath As String, reason As String, fullPath As String)
+    errWs.Cells(errRow, 1).Value = errRow - 1
+    errWs.Cells(errRow, 2).Value = macroTime
+    errWs.Cells(errRow, 3).Value = receivedTime
+    errWs.Cells(errRow, 4).Value = subject
+    errWs.Cells(errRow, 5).Value = attachName
+    errWs.Cells(errRow, 6).Value = msgPath
+    errWs.Cells(errRow, 7).Value = reason
+    errWs.Cells(errRow, 8).Value = fullPath
+End Sub
