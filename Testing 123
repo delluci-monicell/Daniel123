@@ -21,19 +21,8 @@ Sub DownloadAttachments()
     senderEmail = Trim(ws.Range("C4").Value)
     sPath = Trim(ws.Range("C9").Value)
     outlookFolder = Trim(ws.Range("C10").Value)
-
-    Dim fromDate As Date
-    Dim fromTime As Date
-    Dim toDate As Date
-    Dim toTime As Date
-
-    fromDate = CDate(ws.Range("C5").Value)
-    fromTime = CDate(ws.Range("C6").Value)
-    toDate = CDate(ws.Range("C7").Value)
-    toTime = CDate(ws.Range("C8").Value)
-
-    fromDateTime = fromDate + fromTime
-    toDateTime = toDate + toTime
+    fromDateTime = CDate(ws.Range("C5").Value) + CDate(ws.Range("C6").Value)
+    toDateTime = CDate(ws.Range("C7").Value) + CDate(ws.Range("C8").Value)
     On Error GoTo 0
 
     '=== VALIDATE PATH ===
@@ -92,26 +81,24 @@ Sub DownloadAttachments()
         Exit Sub
     End If
 
-    '=== DATE FILTER ===
-    Dim filterFrom As String
-    Dim filterTo As String
-    filterFrom = Format(fromDateTime, "yyyy-mm-ddThh:mm:ss")
-    filterTo = Format(toDateTime, "yyyy-mm-ddThh:mm:ss")
-
+    '=== DASL DATE FILTER (locale-independent) ===
     Dim filter As String
-    filter = "@SQL=""urn:schemas:httpmail:datereceived"" >= '" & filterFrom & "'" & _
-             " AND ""urn:schemas:httpmail:datereceived"" <= '" & filterTo & "'"
+    filter = "@SQL=""urn:schemas:httpmail:datereceived"" >= '" & _
+             Format(fromDateTime, "yyyy-mm-ddThh:mm:ss") & "'" & _
+             " AND ""urn:schemas:httpmail:datereceived"" <= '" & _
+             Format(toDateTime, "yyyy-mm-ddThh:mm:ss") & "'"
+
+    '=== SORT BY DATE ASCENDING FOR PREDICTABLE ORDER ===
+    Dim allItems As Object
+    Set allItems = targetFolder.Items
+    allItems.Sort "[ReceivedTime]", False
 
     Dim filteredItems As Object
-    Set filteredItems = targetFolder.Items.Restrict(filter)
-
-    '=== FAST COUNT — no loop needed ===
-    Dim totalEmails As Long
-    totalEmails = filteredItems.Count
+    Set filteredItems = allItems.Restrict(filter)
 
     '=== SHOW PROGRESS FORM ===
-    frmProgress.lblStatus.Caption = "Preparing Emails..."
-    frmProgress.lblEmailCount.Caption = "0 / " & totalEmails & " Emails Processed"
+    frmProgress.lblStatus.Caption = "Preparing..."
+    frmProgress.lblEmailCount.Caption = "0 / ? Emails Processed"
     frmProgress.lblDownloadCount.Caption = "PDFs Downloaded: 0"
     frmProgress.lblBar.Width = 0
     frmProgress.Show vbModeless
@@ -130,17 +117,18 @@ Sub DownloadAttachments()
 
     '=== LOOP EMAILS ===
     Dim mi As Object
-    Dim miEmail As String
     Dim tempMail As Object
     Dim at As Object
     Dim tempMsgPath As String
     Dim savePath As String
     Dim pdfSaved As Boolean
+    Dim miEmail As String
 
     For Each mi In filteredItems
 
         If TypeName(mi) <> "MailItem" Then GoTo NextMail
 
+        '=== GET SENDER ===
         miEmail = ""
         On Error Resume Next
         miEmail = mi.SenderEmailAddress
@@ -153,8 +141,10 @@ Sub DownloadAttachments()
 
         processed = processed + 1
 
-        '=== UPDATE PROGRESS ===
-        frmProgress.UpdateProgress processed, totalEmails, downloaded
+        '=== UPDATE PROGRESS FORM ===
+        frmProgress.lblStatus.Caption = "Processing email " & processed & "..."
+        frmProgress.lblEmailCount.Caption = processed & " / ? Emails Processed"
+        frmProgress.lblDownloadCount.Caption = "PDFs Downloaded: " & downloaded
         DoEvents
 
         '=== SAVE TEMP MSG ===
@@ -220,35 +210,49 @@ Sub DownloadAttachments()
         End If
 
 CleanTemp:
-        '=== CLOSE TEMP MAIL AND DELETE .MSG WITH RETRY ===
+        '=== CLOSE TEMP MSG AND WAIT FOR OUTLOOK TO RELEASE ===
         On Error Resume Next
         If Not tempMail Is Nothing Then
             tempMail.Close 0
             Set tempMail = Nothing
         End If
+        Set at = Nothing
+
+        ' Wait for Outlook to release the file lock
+        DoEvents
+        Application.Wait Now + TimeValue("00:00:03")
         DoEvents
 
+        ' Retry delete up to 5 times with 2 second gaps
         Dim retryCount As Integer
         retryCount = 0
         Do While Dir(tempMsgPath) <> "" And retryCount < 5
-            Application.Wait Now + TimeValue("00:00:01")
+            On Error Resume Next
             Kill tempMsgPath
-            retryCount = retryCount + 1
-            DoEvents
+            If Err.Number <> 0 Then
+                Err.Clear
+                retryCount = retryCount + 1
+                Application.Wait Now + TimeValue("00:00:02")
+                DoEvents
+            Else
+                Exit Do
+            End If
         Loop
         On Error GoTo 0
 
 NextMail:
     Next mi
 
-    '=== FINAL PROGRESS UPDATE ===
-    frmProgress.UpdateProgress totalEmails, totalEmails, downloaded
+    '=== FINAL FORM UPDATE ===
     frmProgress.lblStatus.Caption = "Completed!"
+    frmProgress.lblEmailCount.Caption = processed & " / " & processed & " Emails Processed"
+    frmProgress.lblDownloadCount.Caption = "PDFs Downloaded: " & downloaded
+    frmProgress.lblBar.Width = frmProgress.fraProgress.InsideWidth
     DoEvents
-    Application.Wait Now + TimeValue("00:00:01")
+    Application.Wait Now + TimeValue("00:00:02")
     Unload frmProgress
 
-    '=== UPDATE SHEET STATUS ===
+    '=== UPDATE SHEET ===
     ws.Range("C15").Value = "Success"
     ws.Range("C16").Value = downloaded
     ws.Range("C17").Value = Now
@@ -256,35 +260,23 @@ NextMail:
     '=== SUCCESS MESSAGE ===
     MsgBox downloaded & " attachment(s) downloaded from " & processed & _
            " matching email(s)." & vbNewLine & vbNewLine & _
-           "Save folder: " & sPath, vbInformation, "Download Complete"
-
-    '=== FINAL CLEANUP — delete any leftover TEMP .msg files ===
-    Dim leftover As String
-    leftover = Dir(sPath & "TEMP_*.msg")
-    Do While leftover <> ""
-        On Error Resume Next
-        Kill sPath & leftover
-        On Error GoTo 0
-        leftover = Dir()
-    Loop
+           "Saved to: " & sPath, vbInformation, "Download Complete"
 
     Exit Sub
 
 ReadError:
-    MsgBox "Error reading settings from sheet." & vbNewLine & _
-           "Check cells C4 to C10 are filled correctly." & vbNewLine & _
+    MsgBox "Error reading settings. Check cells C4 to C10." & vbNewLine & _
            Err.Description, vbCritical
     Exit Sub
 
 OutlookError:
-    MsgBox "Could not connect to Outlook." & vbNewLine & _
-           "Make sure Outlook is open and try again." & vbNewLine & _
+    MsgBox "Could not connect to Outlook. Make sure Outlook is open." & vbNewLine & _
            Err.Description, vbCritical
     Exit Sub
 
 End Sub
 
-'=== HELPER: WRITE ERROR ROW ===
+'=== HELPER: LOG ERROR ===
 Sub LogError(errWs As Worksheet, errRow As Long, macroTime As Date, _
              receivedTime As Variant, subject As String, attachName As String, _
              msgPath As String, reason As String, fullPath As String)
