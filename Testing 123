@@ -1,57 +1,250 @@
-'========================
-' Select folder dynamically
-'========================
+Sub DownloadPDFAttachments()
 
-Dim rootFolder As Object
-Dim foundFolder As Object
+    On Error GoTo MainError
 
-If Trim(sFldr) = "" Then
-    MsgBox "Please enter Outlook folder name in C10.", vbExclamation
-    Exit Sub
-End If
-
-Set foundFolder = Nothing
-
-'Search entire Outlook mailbox recursively
-For Each rootFolder In olNS.Folders
-
-    Set foundFolder = FindOutlookFolder(rootFolder, sFldr)
-
-    If Not foundFolder Is Nothing Then
-        Exit For
+    Dim ws As Worksheet
+    Dim logWs As Worksheet
+    Dim errWs As Worksheet
+    
+    Set ws = ThisWorkbook.Sheets("PDF Downloader")
+    Set logWs = ThisWorkbook.Sheets("Download Log")
+    Set errWs = ThisWorkbook.Sheets("Error Log")
+    
+    Dim sEmail As String
+    Dim sPath As String
+    Dim sFldr As String
+    
+    Dim dFrom As Date
+    Dim dTo As Date
+    Dim timeFrom As String
+    Dim timeTo As String
+    
+    Dim startDateTime As Date
+    Dim endDateTime As Date
+    
+    sEmail = Trim(ws.Range("C4").Value)
+    sPath = Trim(ws.Range("C9").Value)
+    sFldr = Trim(ws.Range("C10").Value)
+    
+    dFrom = ws.Range("C5").Value
+    dTo = ws.Range("C7").Value
+    
+    If ws.Range("C6").Value <> "" Then
+        timeFrom = Format(ws.Range("C6").Value, "hh:mm:ss")
     End If
-
-Next rootFolder
-
-If foundFolder Is Nothing Then
-    MsgBox "Outlook folder not found: " & sFldr & vbCrLf & _
-           "Check exact folder name in Outlook.", vbExclamation
-    Exit Sub
-End If
-
-Set olFld = foundFolder
-
-
-
-
-
-Function FindOutlookFolder(parentFolder As Object, targetName As String) As Object
-
-    Dim subFolder As Object
-
-    If LCase(Trim(parentFolder.Name)) = LCase(Trim(targetName)) Then
-        Set FindOutlookFolder = parentFolder
-        Exit Function
+    
+    If ws.Range("C8").Value <> "" Then
+        timeTo = Format(ws.Range("C8").Value, "hh:mm:ss")
     End If
-
-    For Each subFolder In parentFolder.Folders
-
-        Set FindOutlookFolder = FindOutlookFolder(subFolder, targetName)
-
-        If Not FindOutlookFolder Is Nothing Then
-            Exit Function
+    
+    If timeFrom = "" Then
+        startDateTime = DateValue(dFrom)
+    Else
+        startDateTime = DateValue(dFrom) + TimeValue(timeFrom)
+    End If
+    
+    If timeTo = "" Then
+        endDateTime = DateValue(dTo) + TimeValue("23:59:59")
+    Else
+        endDateTime = DateValue(dTo) + TimeValue(timeTo)
+    End If
+    
+    If Right(sPath, 1) <> "\" Then
+        sPath = sPath & "\"
+    End If
+    
+    '-----------------------------------
+    ' Open Outlook
+    '-----------------------------------
+    Dim olApp As Object
+    Dim olNS As Object
+    Dim olFld As Object
+    
+    On Error Resume Next
+    Set olApp = GetObject(, "Outlook.Application")
+    On Error GoTo 0
+    
+    If olApp Is Nothing Then
+        Set olApp = CreateObject("Outlook.Application")
+        Application.Wait Now + TimeValue("0:00:03")
+    End If
+    
+    Set olNS = olApp.GetNamespace("MAPI")
+    olNS.Logon
+    
+    '-----------------------------------
+    ' Dynamic Folder Search
+    '-----------------------------------
+    Dim rootFolder As Object
+    Dim foundFolder As Object
+    
+    Set foundFolder = Nothing
+    
+    For Each rootFolder In olNS.Folders
+    
+        Set foundFolder = FindOutlookFolder(rootFolder, sFldr)
+        
+        If Not foundFolder Is Nothing Then Exit For
+        
+    Next rootFolder
+    
+    If foundFolder Is Nothing Then
+        MsgBox "Outlook folder not found", vbExclamation
+        Exit Sub
+    End If
+    
+    Set olFld = foundFolder
+    
+    '-----------------------------------
+    ' Filter Emails
+    '-----------------------------------
+    Dim items As Object
+    Dim mi As Object
+    Dim filterStr As String
+    
+    filterStr = "[ReceivedTime] >= '" & _
+                Format(startDateTime, "ddddd h:nn AMPM") & _
+                "' AND [ReceivedTime] <= '" & _
+                Format(endDateTime, "ddddd h:nn AMPM") & "'" & _
+                " AND [SenderEmailAddress] = '" & sEmail & "'"
+    
+    Set items = olFld.Items.Restrict(filterStr)
+    
+    If items.Count = 0 Then
+        MsgBox "No emails found", vbInformation
+        Exit Sub
+    End If
+    
+    '-----------------------------------
+    ' Progress Form
+    '-----------------------------------
+    frmProgress.Show vbModeless
+    frmProgress.lblBar.Width = 0
+    
+    Dim processed As Long
+    Dim downloaded As Long
+    Dim failed As Long
+    
+    Dim logRow As Long
+    Dim errRow As Long
+    
+    logRow = logWs.Cells(logWs.Rows.Count, 1).End(xlUp).Row + 1
+    errRow = errWs.Cells(errWs.Rows.Count, 1).End(xlUp).Row + 1
+    
+    Dim tempMsgPath As String
+    Dim tempMail As Object
+    Dim at As Object
+    Dim pdfSaved As Boolean
+    
+    For Each mi In items
+    
+        processed = processed + 1
+        
+        frmProgress.lblCount.Caption = processed & _
+        " / " & items.Count & " Emails Processed"
+        
+        frmProgress.lblDownloaded.Caption = _
+        "PDFs Downloaded: " & downloaded
+        
+        frmProgress.lblBar.Width = _
+        (processed / items.Count) * frmProgress.fraProgress.Width
+        
+        DoEvents
+        
+        tempMsgPath = sPath & _
+        "TEMP_" & Format(Now, "yyyymmdd_hhnnss") & ".msg"
+        
+        mi.SaveAs tempMsgPath, 3
+        
+        pdfSaved = False
+        
+        On Error Resume Next
+        Set tempMail = olApp.Session.OpenSharedItem(tempMsgPath)
+        On Error GoTo 0
+        
+        If Not tempMail Is Nothing Then
+        
+            For Each at In tempMail.Attachments
+            
+                If LCase(Right(at.FileName, 4)) = ".pdf" Then
+                
+                    Dim pdfPath As String
+                    
+                    pdfPath = sPath & at.FileName
+                    
+                    If Dir(pdfPath) <> "" Then
+                        pdfPath = sPath & _
+                        Format(Now, "yyyymmdd_hhnnss_") & at.FileName
+                    End If
+                    
+                    On Error Resume Next
+                    at.SaveAsFile pdfPath
+                    
+                    If Err.Number = 0 Then
+                    
+                        downloaded = downloaded + 1
+                        pdfSaved = True
+                        
+                        logWs.Cells(logRow, 1).Value = logRow - 1
+                        logWs.Cells(logRow, 2).Value = Now
+                        logWs.Cells(logRow, 3).Value = mi.Subject
+                        logWs.Cells(logRow, 4).Value = mi.ReceivedTime
+                        logWs.Cells(logRow, 5).Value = at.FileName
+                        logWs.Cells(logRow, 6).Value = pdfPath
+                        
+                        logRow = logRow + 1
+                    
+                    End If
+                    
+                    Err.Clear
+                
+                End If
+            
+            Next at
+        
         End If
+        
+        If pdfSaved = True Then
+        
+            On Error Resume Next
+            Kill tempMsgPath
+            On Error GoTo 0
+        
+        Else
+        
+            failed = failed + 1
+            
+            errWs.Cells(errRow, 1).Value = errRow - 1
+            errWs.Cells(errRow, 2).Value = Now
+            errWs.Cells(errRow, 3).Value = mi.ReceivedTime
+            errWs.Cells(errRow, 4).Value = mi.Subject
+            errWs.Cells(errRow, 5).Value = "PDF Not Extracted"
+            errWs.Cells(errRow, 6).Value = tempMsgPath
+            errWs.Cells(errRow, 7).Value = "Manual review required"
+            
+            errRow = errRow + 1
+        
+        End If
+    
+    Next mi
+    
+    Unload frmProgress
+    
+    ws.Range("C15").Value = "Success"
+    ws.Range("C16").Value = downloaded
+    ws.Range("C17").Value = Now
+    
+    MsgBox "Process Complete" & vbCrLf & _
+           "Downloaded: " & downloaded & vbCrLf & _
+           "Failed: " & failed, vbInformation
+    
+    Exit Sub
 
-    Next subFolder
+MainError:
 
-End Function
+    On Error Resume Next
+    Unload frmProgress
+    
+    MsgBox Err.Description, vbCritical
+
+End Sub
