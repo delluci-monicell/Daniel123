@@ -6,18 +6,11 @@
     Dim found As Boolean
     found = False
 
-    Dim i As Integer
-    For i = 1 To olNs.Stores.Count
-        On Error Resume Next
-        Set rootFolder = olNs.Stores(i).GetRootFolder()
-        If Err.Number <> 0 Then
-            Err.Clear
-            GoTo NextStore
-        End If
-        On Error GoTo 0
-
-        ' Check top level folders
-        For Each f In rootFolder.Folders
+    ' Loop through all mailboxes directly via Folders collection
+    Dim mb As Object
+    For Each mb In olNs.Folders
+        ' Check direct children of each mailbox
+        For Each f In mb.Folders
             If LCase(Trim(f.Name)) = LCase(Trim(outlookFolder)) Then
                 Set targetFolder = f
                 found = True
@@ -33,23 +26,20 @@
             Next subF
             If found Then Exit For
         Next f
-
         If found Then Exit For
-
-NextStore:
-    Next i
+    Next mb
 
     If Not found Then
-        ' Show all top level folder names to help diagnose
+        ' List all folders for diagnosis
         Dim folderList As String
         folderList = ""
-        On Error Resume Next
-        Set rootFolder = olNs.Stores(1).GetRootFolder()
-        For Each f In rootFolder.Folders
-            folderList = folderList & f.Name & vbNewLine
-        Next f
-        On Error GoTo 0
+        For Each mb In olNs.Folders
+            folderList = folderList & ">> " & mb.Name & vbNewLine
+            For Each f In mb.Folders
+                folderList = folderList & "  - " & f.Name & vbNewLine
+            Next f
+        Next mb
         MsgBox "Folder '" & outlookFolder & "' not found." & vbNewLine & vbNewLine & _
-               "Top level folders found:" & vbNewLine & folderList, vbCritical
+               "Folders found:" & vbNewLine & folderList, vbCritical
         Exit Sub
     End If
