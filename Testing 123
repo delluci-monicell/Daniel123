@@ -1,3 +1,13 @@
-    Dim filter As String
-    filter = "[ReceivedTime] >= '" & Format(fromDateTime, "mm/dd/yyyy hh:mm AMPM") & "'" & _
-             " AND [ReceivedTime] <= '" & Format(toDateTime, "mm/dd/yyyy hh:mm AMPM") & "'"
+    Dim fromDateStr As String
+    Dim toDateStr As String
+    Dim fromDate As Date
+    Dim toDate As Date
+
+    fromDateStr = Format(ws.Range("C5").Value, "dd/mm/yyyy")
+    toDateStr = Format(ws.Range("C7").Value, "dd/mm/yyyy")
+
+    fromDate = DateSerial(CInt(Mid(fromDateStr, 7, 4)), CInt(Mid(fromDateStr, 4, 2)), CInt(Left(fromDateStr, 2)))
+    toDate = DateSerial(CInt(Mid(toDateStr, 7, 4)), CInt(Mid(toDateStr, 4, 2)), CInt(Left(toDateStr, 2)))
+
+    fromDateTime = fromDate + CDate(ws.Range("C6").Value)
+    toDateTime = toDate + CDate(ws.Range("C8").Value)
