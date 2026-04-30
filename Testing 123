@@ -1,27 +1,3 @@
-Find this in your MainMacros module:
-
-        For Each at In tempMail.Attachments
-
-
-Add one line immediately after:
-
-        For Each at In tempMail.Attachments
-            If LCase(Right(at.FileName, 4)) <> ".pdf" Then GoTo NextAttachment
-
-
-Then find:
-
-        Next at
-
-
-Change it to:
-
-NextAttachment:
-        Next at
-
-
-That’s the only two changes needed. Everything else stays the same.
-
-Also update your Important Notes row 22 back to:
-
-Only PDF attachments are downloaded — other files skipped
+    Dim filter As String
+    filter = "[ReceivedTime] >= '" & Format(fromDateTime, "mm/dd/yyyy hh:mm AMPM") & "'" & _
+             " AND [ReceivedTime] <= '" & Format(toDateTime, "mm/dd/yyyy hh:mm AMPM") & "'"
