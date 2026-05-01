@@ -14,22 +14,74 @@ Sub DownloadAttachments()
     Dim senderEmail As String
     Dim sPath As String
     Dim outlookFolder As String
-    Dim fromDateTime As Date
-    Dim toDateTime As Date
-
-    On Error GoTo ReadError
     senderEmail = LCase(Trim(ws.Range("C4").Value))
     sPath = Trim(ws.Range("C9").Value)
     outlookFolder = Trim(ws.Range("C10").Value)
 
-    '=== READ DATE AND TIME DIRECTLY FROM CELL — NO CONVERSION ===
-    fromDateTime = ws.Range("C5").Value + ws.Range("C6").Value
-    toDateTime = ws.Range("C7").Value + ws.Range("C8").Value
-    On Error GoTo 0
+    If senderEmail = "" Or sPath = "" Or outlookFolder = "" Then
+        MsgBox "Please fill in all settings C4 to C10 before running.", vbCritical
+        Exit Sub
+    End If
 
     If Right(sPath, 1) <> "\" Then sPath = sPath & "\"
     If Dir(sPath, vbDirectory) = "" Then
         MsgBox "Save folder not found: " & sPath, vbCritical
+        Exit Sub
+    End If
+
+    '=== READ DATES USING DAY/MONTH/YEAR — WORKS ON ANY PC ===
+    ' This bypasses ALL regional settings completely
+    Dim fromD As Long
+    Dim fromM As Long
+    Dim fromY As Long
+    Dim toD As Long
+    Dim toM As Long
+    Dim toY As Long
+
+    On Error GoTo DateError
+    fromD = Day(ws.Range("C5").Value)
+    fromM = Month(ws.Range("C5").Value)
+    fromY = Year(ws.Range("C5").Value)
+    toD = Day(ws.Range("C7").Value)
+    toM = Month(ws.Range("C7").Value)
+    toY = Year(ws.Range("C7").Value)
+    On Error GoTo 0
+
+    ' Read time as string to avoid any conversion
+    Dim fromTimeStr As String
+    Dim toTimeStr As String
+    Dim fromH As Long
+    Dim fromMn As Long
+    Dim fromS As Long
+    Dim toH As Long
+    Dim toMn As Long
+    Dim toS As Long
+
+    On Error GoTo DateError
+    fromH = Hour(ws.Range("C6").Value)
+    fromMn = Minute(ws.Range("C6").Value)
+    fromS = Second(ws.Range("C6").Value)
+    toH = Hour(ws.Range("C8").Value)
+    toMn = Minute(ws.Range("C8").Value)
+    toS = Second(ws.Range("C8").Value)
+    On Error GoTo 0
+
+    ' Build clean datetime from components
+    Dim fromDateTime As Date
+    Dim toDateTime As Date
+    fromDateTime = DateSerial(fromY, fromM, fromD) + TimeSerial(fromH, fromMn, fromS)
+    toDateTime = DateSerial(toY, toM, toD) + TimeSerial(toH, toMn, toS)
+
+    ' Show user what dates were read — confirm before proceeding
+    Dim confirm As Integer
+    confirm = MsgBox("Dates read from sheet:" & vbNewLine & vbNewLine & _
+                     "From: " & Format(fromDateTime, "dd-mmm-yyyy hh:mm:ss") & vbNewLine & _
+                     "To:   " & Format(toDateTime, "dd-mmm-yyyy hh:mm:ss") & vbNewLine & vbNewLine & _
+                     "Is this correct? Click Yes to proceed or No to cancel.", _
+                     vbYesNo + vbQuestion, "Confirm Date Range")
+
+    If confirm = vbNo Then
+        MsgBox "Cancelled. Please check your date and time values in C5 to C8.", vbInformation
         Exit Sub
     End If
 
@@ -46,7 +98,7 @@ Sub DownloadAttachments()
     olNs.Logon
     On Error GoTo 0
 
-    '=== FIND FOLDER ===
+    '=== FIND FOLDER — SEARCHES ALL FOLDERS IN MAILBOX ===
     Dim targetFolder As Object
     Dim mb As Object
     Dim f As Object
@@ -81,11 +133,14 @@ Sub DownloadAttachments()
                 folderList = folderList & "  - " & f.Name & vbNewLine
             Next f
         Next mb
-        MsgBox "Folder '" & outlookFolder & "' not found." & vbNewLine & "Available:" & vbNewLine & folderList, vbCritical
+        MsgBox "Folder '" & outlookFolder & "' not found." & vbNewLine & _
+               "Available folders:" & vbNewLine & folderList, vbCritical
         Exit Sub
     End If
 
-    '=== DASL FILTER ===
+    '=== BUILD FILTER ===
+    ' Use DASL with UTC offset for Singapore UTC+8
+    ' Subtracting 8 hours converts local time to UTC for Outlook
     Dim fromUTC As Date
     Dim toUTC As Date
     fromUTC = fromDateTime - (8 / 24)
@@ -101,7 +156,7 @@ Sub DownloadAttachments()
     Dim filteredItems As Object
     Set filteredItems = allItems.Restrict(filter)
 
-    '=== FAST PRE-COUNT ===
+    '=== PRE COUNT ===
     frmProgress.lblStatus.Caption = "Counting emails..."
     frmProgress.lblEmailCount.Caption = "Please wait..."
     frmProgress.lblDownloadCount.Caption = "Attachments Downloaded: 0"
@@ -120,6 +175,13 @@ Sub DownloadAttachments()
             End If
         End If
     Next mi
+
+    If totalEmails = 0 Then
+        Unload frmProgress
+        MsgBox "No emails found matching your criteria." & vbNewLine & _
+               "Please check sender email, date range and folder name.", vbInformation
+        Exit Sub
+    End If
 
     frmProgress.lblStatus.Caption = "Starting download..."
     frmProgress.lblEmailCount.Caption = "0 / " & totalEmails & " Emails Processed"
@@ -158,7 +220,6 @@ Sub DownloadAttachments()
 
         processed = processed + 1
 
-        '--- Update progress ---
         progressPct = processed / totalEmails
         If progressPct > 1 Then progressPct = 1
         frmProgress.lblStatus.Caption = "Processing " & processed & " of " & totalEmails
@@ -166,14 +227,12 @@ Sub DownloadAttachments()
         frmProgress.lblBar.Width = Int(frmProgress.fraProgress.InsideWidth * progressPct)
         DoEvents
 
-        '--- Skip if no attachments ---
         If mi.Attachments.Count = 0 Then
             Call LogError(errWs, errRow, Now, mi.ReceivedTime, mi.Subject, "", "", "No Attachments Found", "")
             errRow = errRow + 1
             GoTo NextMail
         End If
 
-        '--- Save temp MSG ---
         tempMsgPath = sPath & "TEMP_" & Format(Now, "yyyymmdd_hhnnss") & "_" & processed & ".msg"
 
         On Error Resume Next
@@ -186,7 +245,6 @@ Sub DownloadAttachments()
         End If
         On Error GoTo 0
 
-        '--- Open temp MSG ---
         Set tempMail = Nothing
         On Error Resume Next
         Set tempMail = olApp.Session.OpenSharedItem(tempMsgPath)
@@ -200,7 +258,6 @@ Sub DownloadAttachments()
 
         pdfSaved = False
 
-        '--- Save attachments ---
         For Each at In tempMail.Attachments
             If LCase(Right(at.FileName, 4)) <> ".pdf" Then GoTo NextAttachment
 
@@ -247,7 +304,6 @@ CleanTemp:
             Set tempMail = Nothing
         End If
         DoEvents
-
         If tempMsgPath <> "" Then
             tempFileCount = tempFileCount + 1
             ReDim Preserve tempFiles(1 To tempFileCount)
@@ -258,7 +314,7 @@ CleanTemp:
 NextMail:
     Next mi
 
-    '=== FINAL PROGRESS UPDATE ===
+    '=== COMPLETE ===
     frmProgress.lblStatus.Caption = "Completed!"
     frmProgress.lblEmailCount.Caption = processed & " / " & totalEmails & " Emails Processed"
     frmProgress.lblDownloadCount.Caption = "Attachments Downloaded: " & downloaded
@@ -267,7 +323,6 @@ NextMail:
     Application.Wait Now + TimeValue("00:00:01")
     Unload frmProgress
 
-    '=== ELAPSED TIME ===
     Dim elapsedSec As Long
     elapsedSec = CLng(Timer - startTime)
     Dim hrs As Long
@@ -277,20 +332,22 @@ NextMail:
     mins = (elapsedSec Mod 3600) \ 60
     secs = elapsedSec Mod 60
 
-    '=== UPDATE SHEET ===
     ws.Range("C15").Value = "Success"
     ws.Range("C16").Value = downloaded
     ws.Range("C17").Value = Now
     ws.Range("C18").Value = Format(hrs, "00") & "h " & Format(mins, "00") & "m " & Format(secs, "00") & "s"
 
-    '=== SUCCESS MESSAGE ===
     MsgBox downloaded & " attachment(s) downloaded from " & processed & " of " & totalEmails & " matching email(s)." & vbNewLine & vbNewLine & "Time taken: " & Format(hrs, "00") & "h " & Format(mins, "00") & "m " & Format(secs, "00") & "s" & vbNewLine & vbNewLine & "Please click OK and wait 2 to 5 seconds." & vbNewLine & "Temporary email files will be deleted automatically.", vbInformation, "Download Complete"
 
-    '=== TRIGGER CLEANUP ===
     If tempFileCount > 0 Then
         Call CleanupTempFiles(tempFiles, tempFileCount)
     End If
 
+    Exit Sub
+
+DateError:
+    MsgBox "Error reading date or time from sheet." & vbNewLine & _
+           "Please check C5, C6, C7, C8 are valid date and time values.", vbCritical
     Exit Sub
 
 ReadError:
@@ -307,7 +364,6 @@ OutlookError:
 
 End Sub
 
-'=== LOG ERROR HELPER ===
 Sub LogError(errWs As Worksheet, errRow As Long, macroTime As Date, _
              receivedTime As Variant, subject As String, attachName As String, _
              msgPath As String, reason As String, fullPath As String)
