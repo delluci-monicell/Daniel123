@@ -2,7 +2,6 @@ Option Explicit
 
 Sub DownloadAttachments()
 
-    '=== SHEETS ===
     Dim ws As Worksheet
     Dim logWs As Worksheet
     Dim errWs As Worksheet
@@ -10,7 +9,6 @@ Sub DownloadAttachments()
     Set logWs = ThisWorkbook.Sheets("Download Log")
     Set errWs = ThisWorkbook.Sheets("Error Log")
 
-    '=== READ SETTINGS ===
     Dim senderEmail As String
     Dim sPath As String
     Dim outlookFolder As String
@@ -19,7 +17,7 @@ Sub DownloadAttachments()
     outlookFolder = Trim(ws.Range("C10").Value)
 
     If senderEmail = "" Or sPath = "" Or outlookFolder = "" Then
-        MsgBox "Please fill in all settings C4 to C10 before running.", vbCritical
+        MsgBox "Please fill in all settings C4 to C10.", vbCritical
         Exit Sub
     End If
 
@@ -29,14 +27,10 @@ Sub DownloadAttachments()
         Exit Sub
     End If
 
-    '=== READ DATES USING DAY/MONTH/YEAR — WORKS ON ANY PC ===
-    ' This bypasses ALL regional settings completely
-    Dim fromD As Long
-    Dim fromM As Long
-    Dim fromY As Long
-    Dim toD As Long
-    Dim toM As Long
-    Dim toY As Long
+    Dim fromD As Long, fromM As Long, fromY As Long
+    Dim toD As Long, toM As Long, toY As Long
+    Dim fromH As Long, fromMn As Long, fromS As Long
+    Dim toH As Long, toMn As Long, toS As Long
 
     On Error GoTo DateError
     fromD = Day(ws.Range("C5").Value)
@@ -45,19 +39,6 @@ Sub DownloadAttachments()
     toD = Day(ws.Range("C7").Value)
     toM = Month(ws.Range("C7").Value)
     toY = Year(ws.Range("C7").Value)
-    On Error GoTo 0
-
-    ' Read time as string to avoid any conversion
-    Dim fromTimeStr As String
-    Dim toTimeStr As String
-    Dim fromH As Long
-    Dim fromMn As Long
-    Dim fromS As Long
-    Dim toH As Long
-    Dim toMn As Long
-    Dim toS As Long
-
-    On Error GoTo DateError
     fromH = Hour(ws.Range("C6").Value)
     fromMn = Minute(ws.Range("C6").Value)
     fromS = Second(ws.Range("C6").Value)
@@ -66,30 +47,21 @@ Sub DownloadAttachments()
     toS = Second(ws.Range("C8").Value)
     On Error GoTo 0
 
-    ' Build clean datetime from components
     Dim fromDateTime As Date
     Dim toDateTime As Date
     fromDateTime = DateSerial(fromY, fromM, fromD) + TimeSerial(fromH, fromMn, fromS)
     toDateTime = DateSerial(toY, toM, toD) + TimeSerial(toH, toMn, toS)
 
-    ' Show user what dates were read — confirm before proceeding
     Dim confirm As Integer
     confirm = MsgBox("Dates read from sheet:" & vbNewLine & vbNewLine & _
                      "From: " & Format(fromDateTime, "dd-mmm-yyyy hh:mm:ss") & vbNewLine & _
                      "To:   " & Format(toDateTime, "dd-mmm-yyyy hh:mm:ss") & vbNewLine & vbNewLine & _
-                     "Is this correct? Click Yes to proceed or No to cancel.", _
-                     vbYesNo + vbQuestion, "Confirm Date Range")
+                     "Is this correct?", vbYesNo + vbQuestion, "Confirm Date Range")
+    If confirm = vbNo Then Exit Sub
 
-    If confirm = vbNo Then
-        MsgBox "Cancelled. Please check your date and time values in C5 to C8.", vbInformation
-        Exit Sub
-    End If
-
-    '=== START TIMER ===
     Dim startTime As Double
     startTime = Timer
 
-    '=== CONNECT OUTLOOK ===
     Dim olApp As Object
     Dim olNs As Object
     On Error GoTo OutlookError
@@ -98,7 +70,6 @@ Sub DownloadAttachments()
     olNs.Logon
     On Error GoTo 0
 
-    '=== FIND FOLDER — SEARCHES ALL FOLDERS IN MAILBOX ===
     Dim targetFolder As Object
     Dim mb As Object
     Dim f As Object
@@ -134,29 +105,16 @@ Sub DownloadAttachments()
             Next f
         Next mb
         MsgBox "Folder '" & outlookFolder & "' not found." & vbNewLine & _
-               "Available folders:" & vbNewLine & folderList, vbCritical
+               "Available:" & vbNewLine & folderList, vbCritical
         Exit Sub
     End If
 
-    '=== BUILD FILTER ===
-    ' Use DASL with UTC offset for Singapore UTC+8
-    ' Subtracting 8 hours converts local time to UTC for Outlook
-    Dim fromUTC As Date
-    Dim toUTC As Date
-    fromUTC = fromDateTime - (8 / 24)
-    toUTC = toDateTime - (8 / 24)
-
-    Dim filter As String
-    filter = "@SQL=""urn:schemas:httpmail:datereceived"" >= '" & Format(fromUTC, "yyyy-mm-ddThh:mm:ss") & "Z' AND ""urn:schemas:httpmail:datereceived"" <= '" & Format(toUTC, "yyyy-mm-ddThh:mm:ss") & "Z'"
-
+    '=== GET ALL ITEMS — DATE CHECK DONE MANUALLY IN LOOP ===
     Dim allItems As Object
     Set allItems = targetFolder.Items
     allItems.Sort "[ReceivedTime]", False
 
-    Dim filteredItems As Object
-    Set filteredItems = allItems.Restrict(filter)
-
-    '=== PRE COUNT ===
+    '=== SHOW PROGRESS FORM ===
     frmProgress.lblStatus.Caption = "Counting emails..."
     frmProgress.lblEmailCount.Caption = "Please wait..."
     frmProgress.lblDownloadCount.Caption = "Attachments Downloaded: 0"
@@ -164,16 +122,20 @@ Sub DownloadAttachments()
     frmProgress.Show vbModeless
     DoEvents
 
+    '=== FAST PRE-COUNT WITH MANUAL DATE CHECK ===
     Dim totalEmails As Long
     totalEmails = 0
     Dim mi As Object
 
-    For Each mi In filteredItems
+    For Each mi In allItems
         If TypeName(mi) = "MailItem" Then
+            If mi.ReceivedTime < fromDateTime Then GoTo NextCount
+            If mi.ReceivedTime > toDateTime Then GoTo NextCount
             If LCase(Trim(mi.SenderEmailAddress)) = senderEmail Then
                 totalEmails = totalEmails + 1
             End If
         End If
+NextCount:
     Next mi
 
     If totalEmails = 0 Then
@@ -187,24 +149,20 @@ Sub DownloadAttachments()
     frmProgress.lblEmailCount.Caption = "0 / " & totalEmails & " Emails Processed"
     DoEvents
 
-    '=== LOG ROW POINTERS ===
     Dim logRow As Long
     Dim errRow As Long
     logRow = logWs.Cells(logWs.Rows.Count, 1).End(xlUp).Row + 1
     errRow = errWs.Cells(errWs.Rows.Count, 1).End(xlUp).Row + 1
 
-    '=== COUNTERS ===
     Dim downloaded As Long
     Dim processed As Long
     downloaded = 0
     processed = 0
 
-    '=== TEMP FILE TRACKER ===
     Dim tempFiles() As String
     Dim tempFileCount As Long
     tempFileCount = 0
 
-    '=== VARIABLES ===
     Dim tempMail As Object
     Dim at As Object
     Dim tempMsgPath As String
@@ -213,9 +171,11 @@ Sub DownloadAttachments()
     Dim progressPct As Double
 
     '=== MAIN LOOP ===
-    For Each mi In filteredItems
+    For Each mi In allItems
 
         If TypeName(mi) <> "MailItem" Then GoTo NextMail
+        If mi.ReceivedTime < fromDateTime Then GoTo NextMail
+        If mi.ReceivedTime > toDateTime Then GoTo NextMail
         If LCase(Trim(mi.SenderEmailAddress)) <> senderEmail Then GoTo NextMail
 
         processed = processed + 1
@@ -277,11 +237,12 @@ Sub DownloadAttachments()
                 pdfSaved = True
                 logWs.Cells(logRow, 1).Value = logRow - 1
                 logWs.Cells(logRow, 2).Value = Now
-                logWs.Cells(logRow, 3).Value = mi.Subject
-                logWs.Cells(logRow, 4).Value = mi.SenderEmailAddress
-                logWs.Cells(logRow, 5).Value = at.FileName
-                logWs.Cells(logRow, 6).Value = "Success"
-                logWs.Cells(logRow, 7).Value = savePath
+                logWs.Cells(logRow, 3).Value = mi.ReceivedTime
+                logWs.Cells(logRow, 4).Value = mi.Subject
+                logWs.Cells(logRow, 5).Value = mi.SenderEmailAddress
+                logWs.Cells(logRow, 6).Value = at.FileName
+                logWs.Cells(logRow, 7).Value = "Success"
+                logWs.Cells(logRow, 8).Value = savePath
                 logRow = logRow + 1
                 frmProgress.lblDownloadCount.Caption = "Attachments Downloaded: " & downloaded
                 DoEvents
@@ -314,7 +275,6 @@ CleanTemp:
 NextMail:
     Next mi
 
-    '=== COMPLETE ===
     frmProgress.lblStatus.Caption = "Completed!"
     frmProgress.lblEmailCount.Caption = processed & " / " & totalEmails & " Emails Processed"
     frmProgress.lblDownloadCount.Caption = "Attachments Downloaded: " & downloaded
@@ -325,9 +285,7 @@ NextMail:
 
     Dim elapsedSec As Long
     elapsedSec = CLng(Timer - startTime)
-    Dim hrs As Long
-    Dim mins As Long
-    Dim secs As Long
+    Dim hrs As Long, mins As Long, secs As Long
     hrs = elapsedSec \ 3600
     mins = (elapsedSec Mod 3600) \ 60
     secs = elapsedSec Mod 60
@@ -346,14 +304,7 @@ NextMail:
     Exit Sub
 
 DateError:
-    MsgBox "Error reading date or time from sheet." & vbNewLine & _
-           "Please check C5, C6, C7, C8 are valid date and time values.", vbCritical
-    Exit Sub
-
-ReadError:
-    ws.Range("C15").Value = "Failed"
-    ws.Range("C17").Value = Now
-    MsgBox "Error reading settings. Check C4 to C10." & vbNewLine & Err.Description, vbCritical
+    MsgBox "Error reading date or time. Check C5, C6, C7, C8.", vbCritical
     Exit Sub
 
 OutlookError:
