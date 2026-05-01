@@ -2,6 +2,19 @@ Option Explicit
 
 Sub DownloadAttachments()
 
+    '=== SHEET PASSWORD ===
+    Dim sheetPassword As String
+    sheetPassword = "your_password_here"
+
+    '=== UNLOCK ALL SHEETS AT START ===
+    Dim wsUnlock As Worksheet
+    On Error Resume Next
+    For Each wsUnlock In ThisWorkbook.Sheets
+        wsUnlock.Unprotect Password:=sheetPassword
+    Next wsUnlock
+    On Error GoTo 0
+
+    '=== SHEETS ===
     Dim ws As Worksheet
     Dim logWs As Worksheet
     Dim errWs As Worksheet
@@ -9,6 +22,7 @@ Sub DownloadAttachments()
     Set logWs = ThisWorkbook.Sheets("Download Log")
     Set errWs = ThisWorkbook.Sheets("Error Log")
 
+    '=== READ SETTINGS ===
     Dim senderEmail As String
     Dim sPath As String
     Dim outlookFolder As String
@@ -17,16 +31,19 @@ Sub DownloadAttachments()
     outlookFolder = Trim(ws.Range("C10").Value)
 
     If senderEmail = "" Or sPath = "" Or outlookFolder = "" Then
+        Call LockAllSheets(sheetPassword)
         MsgBox "Please fill in all settings C4 to C10.", vbCritical
         Exit Sub
     End If
 
     If Right(sPath, 1) <> "\" Then sPath = sPath & "\"
     If Dir(sPath, vbDirectory) = "" Then
+        Call LockAllSheets(sheetPassword)
         MsgBox "Save folder not found: " & sPath, vbCritical
         Exit Sub
     End If
 
+    '=== READ DATES ===
     Dim fromD As Long, fromM As Long, fromY As Long
     Dim toD As Long, toM As Long, toY As Long
     Dim fromH As Long, fromMn As Long, fromS As Long
@@ -52,16 +69,22 @@ Sub DownloadAttachments()
     fromDateTime = DateSerial(fromY, fromM, fromD) + TimeSerial(fromH, fromMn, fromS)
     toDateTime = DateSerial(toY, toM, toD) + TimeSerial(toH, toMn, toS)
 
+    '=== CONFIRM DATES ===
     Dim confirm As Integer
     confirm = MsgBox("Dates read from sheet:" & vbNewLine & vbNewLine & _
                      "From: " & Format(fromDateTime, "dd-mmm-yyyy hh:mm:ss") & vbNewLine & _
                      "To:   " & Format(toDateTime, "dd-mmm-yyyy hh:mm:ss") & vbNewLine & vbNewLine & _
                      "Is this correct?", vbYesNo + vbQuestion, "Confirm Date Range")
-    If confirm = vbNo Then Exit Sub
+    If confirm = vbNo Then
+        Call LockAllSheets(sheetPassword)
+        Exit Sub
+    End If
 
+    '=== START TIMER ===
     Dim startTime As Double
     startTime = Timer
 
+    '=== CONNECT OUTLOOK ===
     Dim olApp As Object
     Dim olNs As Object
     On Error GoTo OutlookError
@@ -70,6 +93,7 @@ Sub DownloadAttachments()
     olNs.Logon
     On Error GoTo 0
 
+    '=== FIND FOLDER ===
     Dim targetFolder As Object
     Dim mb As Object
     Dim f As Object
@@ -104,12 +128,13 @@ Sub DownloadAttachments()
                 folderList = folderList & "  - " & f.Name & vbNewLine
             Next f
         Next mb
+        Call LockAllSheets(sheetPassword)
         MsgBox "Folder '" & outlookFolder & "' not found." & vbNewLine & _
                "Available:" & vbNewLine & folderList, vbCritical
         Exit Sub
     End If
 
-    '=== GET ALL ITEMS — DATE CHECK DONE MANUALLY IN LOOP ===
+    '=== GET ALL ITEMS ===
     Dim allItems As Object
     Set allItems = targetFolder.Items
     allItems.Sort "[ReceivedTime]", False
@@ -117,12 +142,12 @@ Sub DownloadAttachments()
     '=== SHOW PROGRESS FORM ===
     frmProgress.lblStatus.Caption = "Counting emails..."
     frmProgress.lblEmailCount.Caption = "Please wait..."
-    frmProgress.lblDownloadCount.Caption = "Attachments Downloaded: 0"
+    frmProgress.lblDownloadedCount.Caption = "Attachments Downloaded: 0"
     frmProgress.lblBar.Width = 0
     frmProgress.Show vbModeless
     DoEvents
 
-    '=== FAST PRE-COUNT WITH MANUAL DATE CHECK ===
+    '=== PRE COUNT ===
     Dim totalEmails As Long
     totalEmails = 0
     Dim mi As Object
@@ -140,6 +165,7 @@ NextCount:
 
     If totalEmails = 0 Then
         Unload frmProgress
+        Call LockAllSheets(sheetPassword)
         MsgBox "No emails found matching your criteria." & vbNewLine & _
                "Please check sender email, date range and folder name.", vbInformation
         Exit Sub
@@ -149,20 +175,24 @@ NextCount:
     frmProgress.lblEmailCount.Caption = "0 / " & totalEmails & " Emails Processed"
     DoEvents
 
+    '=== LOG ROW POINTERS ===
     Dim logRow As Long
     Dim errRow As Long
     logRow = logWs.Cells(logWs.Rows.Count, 1).End(xlUp).Row + 1
     errRow = errWs.Cells(errWs.Rows.Count, 1).End(xlUp).Row + 1
 
+    '=== COUNTERS ===
     Dim downloaded As Long
     Dim processed As Long
     downloaded = 0
     processed = 0
 
+    '=== TEMP FILE TRACKER ===
     Dim tempFiles() As String
     Dim tempFileCount As Long
     tempFileCount = 0
 
+    '=== VARIABLES ===
     Dim tempMail As Object
     Dim at As Object
     Dim tempMsgPath As String
@@ -244,7 +274,7 @@ NextCount:
                 logWs.Cells(logRow, 7).Value = "Success"
                 logWs.Cells(logRow, 8).Value = savePath
                 logRow = logRow + 1
-                frmProgress.lblDownloadCount.Caption = "Attachments Downloaded: " & downloaded
+                frmProgress.lblDownloadedCount.Caption = "Attachments Downloaded: " & downloaded
                 DoEvents
             End If
             On Error GoTo 0
@@ -275,14 +305,16 @@ CleanTemp:
 NextMail:
     Next mi
 
+    '=== COMPLETE ===
     frmProgress.lblStatus.Caption = "Completed!"
     frmProgress.lblEmailCount.Caption = processed & " / " & totalEmails & " Emails Processed"
-    frmProgress.lblDownloadCount.Caption = "Attachments Downloaded: " & downloaded
+    frmProgress.lblDownloadedCount.Caption = "Attachments Downloaded: " & downloaded
     frmProgress.lblBar.Width = frmProgress.fraProgress.InsideWidth
     DoEvents
     Application.Wait Now + TimeValue("00:00:01")
     Unload frmProgress
 
+    '=== ELAPSED TIME ===
     Dim elapsedSec As Long
     elapsedSec = CLng(Timer - startTime)
     Dim hrs As Long, mins As Long, secs As Long
@@ -290,24 +322,32 @@ NextMail:
     mins = (elapsedSec Mod 3600) \ 60
     secs = elapsedSec Mod 60
 
+    '=== UPDATE SHEET ===
     ws.Range("C15").Value = "Success"
     ws.Range("C16").Value = downloaded
     ws.Range("C17").Value = Now
     ws.Range("C18").Value = Format(hrs, "00") & "h " & Format(mins, "00") & "m " & Format(secs, "00") & "s"
 
+    '=== SUCCESS MESSAGE ===
     MsgBox downloaded & " attachment(s) downloaded from " & processed & " of " & totalEmails & " matching email(s)." & vbNewLine & vbNewLine & "Time taken: " & Format(hrs, "00") & "h " & Format(mins, "00") & "m " & Format(secs, "00") & "s" & vbNewLine & vbNewLine & "Please click OK and wait 2 to 5 seconds." & vbNewLine & "Temporary email files will be deleted automatically.", vbInformation, "Download Complete"
 
+    '=== CLEANUP ===
     If tempFileCount > 0 Then
         Call CleanupTempFiles(tempFiles, tempFileCount)
     End If
 
+    '=== LOCK ALL SHEETS AT END ===
+    Call LockAllSheets(sheetPassword)
+
     Exit Sub
 
 DateError:
+    Call LockAllSheets(sheetPassword)
     MsgBox "Error reading date or time. Check C5, C6, C7, C8.", vbCritical
     Exit Sub
 
 OutlookError:
+    Call LockAllSheets(sheetPassword)
     ws.Range("C15").Value = "Failed"
     ws.Range("C17").Value = Now
     MsgBox "Cannot connect to Outlook. Make sure it is open." & vbNewLine & Err.Description, vbCritical
@@ -315,6 +355,23 @@ OutlookError:
 
 End Sub
 
+'=== LOCK ALL SHEETS HELPER ===
+Sub LockAllSheets(sheetPassword As String)
+    Dim wsLock As Worksheet
+    On Error Resume Next
+    For Each wsLock In ThisWorkbook.Sheets
+        wsLock.Protect Password:=sheetPassword, _
+                        DrawingObjects:=True, _
+                        Contents:=True, _
+                        Scenarios:=True, _
+                        UserInterfaceOnly:=True, _
+                        AllowSorting:=True, _
+                        AllowFiltering:=True
+    Next wsLock
+    On Error GoTo 0
+End Sub
+
+'=== LOG ERROR HELPER ===
 Sub LogError(errWs As Worksheet, errRow As Long, macroTime As Date, _
              receivedTime As Variant, subject As String, attachName As String, _
              msgPath As String, reason As String, fullPath As String)
