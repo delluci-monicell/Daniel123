@@ -1,17 +1,31 @@
-    '=== VALIDATE REQUIRED FIELDS ===
-    Dim missingFields As String
-    missingFields = ""
-
-    If ws.Range("C4").Value = "" Then missingFields = missingFields & "C4  - Sender Email Address" & vbNewLine
-    If ws.Range("C5").Value = "" Then missingFields = missingFields & "C5  - Date From" & vbNewLine
-    If ws.Range("C7").Value = "" Then missingFields = missingFields & "C7  - Date To" & vbNewLine
-    If ws.Range("C9").Value = "" Then missingFields = missingFields & "C9  - Save Folder Path" & vbNewLine
-    If ws.Range("C10").Value = "" Then missingFields = missingFields & "C10 - Outlook Folder Name" & vbNewLine
-
-    If missingFields <> "" Then
-        Call LockAllSheets(sheetPassword)
-        MsgBox "Please fill in the following fields before running:" & _
-               vbNewLine & vbNewLine & missingFields, _
-               vbCritical, "Missing Required Fields"
-        Exit Sub
-    End If
+VERSION 2 — Firm but Collegial
+Subject: Checklist Controls — Mandatory Standards Reminder (Effective Immediately)
+Team,
+I want to address some concerns around how our daily and biweekly checklist controls are being
+handled, and set clear expectations going forward.
+WHAT WE NEED TO STOP
+Some checklists are being submitted with generic comments ("checks performed", "yes/no") without the
+controls actually being carried out. Exports are being attached without the underlying checks being
+done. When validators flag issues, responses have been "I'll do it tomorrow" — which is not in line with
+our procedures.
+Supervisors hold us accountable to these checklists as audit evidence. We need to treat them
+accordingly.
+FOR PREPARERS — YOUR RESPONSIBILITIES THIS WEEK AND EVERY WEEK
+• Start the day by reviewing that day's emails, then immediately begin the checklist controls. This is
+your first priority, not an end-of-day task.
+• Do not start controls at 6–7 PM and submit incomplete. If controls are not finished properly, they
+need to be redone — not carried forward.
+• After completing each check, send the relevant exports and screenshots (e.g. from Hobart) to your
+validator by email as evidence. Comments alone will not be accepted.
+FOR VALIDATORS — YOUR RESPONSIBILITIES
+• Do not accept checklists based on trust alone. Confirm the preparer has completed all controls
+with evidence.
+• Review and validate between 7 PM and 8 PM each day.
+• Watch for: unassigned emails, SRs unacknowledged for 10+ days, and any missing actions.
+• If a check is incomplete or unsupported by evidence, reject it and ask the preparer to redo it before
+you sign off.
+CHECKLIST MANAGER TRANSITION
+As Vignesh explained on last week's call, we will be moving to the new Checklist Manager application.
+The exact go-live date will be confirmed by Vignesh — until then, please continue current procedures.
+The new SOP should not be applied until the transition date is officially communicated.
+I appreciate everyone's cooperation. These standards protect the team collectively. Please reach out if
