@@ -25,57 +25,65 @@ Sub HighlightAndFilter()
         Criteria1:=xlFilterNoFill, _
         Operator:=xlFilterCellColor
 
-    ' STEP 3: Convert AA Prescription Date from text to date
-    Call ConvertTextToDate(ws, lastRow)
+    ' STEP 3: Convert AD (Prescription Date) from text to date
+    Dim prescRng As Range
+    Set prescRng = ws.Range("AD" & DATA_START_ROW & ":AD" & lastRow)
+    prescRng.TextToColumns Destination:=ws.Range("AD" & DATA_START_ROW), _
+        DataType:=xlDelimited, _
+        TextQualifier:=xlDoubleQuote, _
+        ConsecutiveDelimiter:=False, _
+        Tab:=False, Semicolon:=False, Comma:=False, Space:=False, Other:=False, _
+        FieldInfo:=Array(1, xlDMYFormat), _
+        TrailingMinusNumbers:=True
 
-    ' STEP 4: AA = 2026 - highlight D Olive Green
+    ' STEP 4: AD = 2026 - highlight D Olive Green
     Dim yr1Start As Date, yr1End As Date
     yr1Start = DateSerial(CInt(YEAR_1), 1, 1)
     yr1End = DateSerial(CInt(YEAR_1), 12, 31)
-    ws.Range("A" & HEADER_ROW).AutoFilter Field:=COL_PRESCRIPTION, _
+    ws.Range("A" & HEADER_ROW).AutoFilter Field:=30, _
         Criteria1:=">=" & CDbl(yr1Start), _
         Operator:=xlAnd, _
         Criteria2:="<=" & CDbl(yr1End)
     Call HighlightVisibleColD(ws, lastRow, RGB(217, 225, 148))
-    ws.Range("A" & HEADER_ROW).AutoFilter Field:=COL_PRESCRIPTION
+    ws.Range("A" & HEADER_ROW).AutoFilter Field:=30
 
-    ' STEP 5: AA = 2027 + Netherlands + Individual
+    ' STEP 5: AD = 2027 + AA (Fiscal Residence Country) + AB (Legal Status) Individual
     Dim yr2Start As Date, yr2End As Date
     yr2Start = DateSerial(CInt(YEAR_2), 1, 1)
     yr2End = DateSerial(CInt(YEAR_2), 12, 31)
-    ws.Range("A" & HEADER_ROW).AutoFilter Field:=COL_PRESCRIPTION, _
+    ws.Range("A" & HEADER_ROW).AutoFilter Field:=30, _
         Criteria1:=">=" & CDbl(yr2Start), _
         Operator:=xlAnd, _
         Criteria2:="<=" & CDbl(yr2End)
-    ws.Range("A" & HEADER_ROW).AutoFilter Field:=COL_FISCALCOUNTRY, _
+    ws.Range("A" & HEADER_ROW).AutoFilter Field:=27, _
         Criteria1:="*" & COUNTRY_2027 & "*"
-    If CheckIfValueExists(ws, lastRow, COL_LEGALSTATUS, LEGAL_STATUS_FILTER) Then
-        ws.Range("A" & HEADER_ROW).AutoFilter Field:=COL_LEGALSTATUS, _
+    If CheckIfValueExists(ws, lastRow, 28, LEGAL_STATUS_FILTER) Then
+        ws.Range("A" & HEADER_ROW).AutoFilter Field:=28, _
             Criteria1:=LEGAL_STATUS_FILTER
         Call HighlightVisibleColD(ws, lastRow, RGB(217, 225, 148))
-        ws.Range("A" & HEADER_ROW).AutoFilter Field:=COL_LEGALSTATUS
+        ws.Range("A" & HEADER_ROW).AutoFilter Field:=28
     End If
-    ws.Range("A" & HEADER_ROW).AutoFilter Field:=COL_FISCALCOUNTRY
-    ws.Range("A" & HEADER_ROW).AutoFilter Field:=COL_PRESCRIPTION
+    ws.Range("A" & HEADER_ROW).AutoFilter Field:=27
+    ws.Range("A" & HEADER_ROW).AutoFilter Field:=30
 
-    ' STEP 6: AA = 2028 + Germany + Individual
+    ' STEP 6: AD = 2028 + AA (Fiscal Residence Country) + AB (Legal Status) Individual
     Dim yr3Start As Date, yr3End As Date
     yr3Start = DateSerial(CInt(YEAR_3), 1, 1)
     yr3End = DateSerial(CInt(YEAR_3), 12, 31)
-    ws.Range("A" & HEADER_ROW).AutoFilter Field:=COL_PRESCRIPTION, _
+    ws.Range("A" & HEADER_ROW).AutoFilter Field:=30, _
         Criteria1:=">=" & CDbl(yr3Start), _
         Operator:=xlAnd, _
         Criteria2:="<=" & CDbl(yr3End)
-    ws.Range("A" & HEADER_ROW).AutoFilter Field:=COL_FISCALCOUNTRY, _
+    ws.Range("A" & HEADER_ROW).AutoFilter Field:=27, _
         Criteria1:="*" & COUNTRY_2028 & "*"
-    If CheckIfValueExists(ws, lastRow, COL_LEGALSTATUS, LEGAL_STATUS_FILTER) Then
-        ws.Range("A" & HEADER_ROW).AutoFilter Field:=COL_LEGALSTATUS, _
+    If CheckIfValueExists(ws, lastRow, 28, LEGAL_STATUS_FILTER) Then
+        ws.Range("A" & HEADER_ROW).AutoFilter Field:=28, _
             Criteria1:=LEGAL_STATUS_FILTER
         Call HighlightVisibleColD(ws, lastRow, RGB(217, 225, 148))
-        ws.Range("A" & HEADER_ROW).AutoFilter Field:=COL_LEGALSTATUS
+        ws.Range("A" & HEADER_ROW).AutoFilter Field:=28
     End If
-    ws.Range("A" & HEADER_ROW).AutoFilter Field:=COL_FISCALCOUNTRY
-    ws.Range("A" & HEADER_ROW).AutoFilter Field:=COL_PRESCRIPTION
+    ws.Range("A" & HEADER_ROW).AutoFilter Field:=27
+    ws.Range("A" & HEADER_ROW).AutoFilter Field:=30
 
     ' Clear ALL filters
     If ws.AutoFilterMode Then ws.AutoFilterMode = False
@@ -103,12 +111,3 @@ Function CheckIfValueExists(ws As Worksheet, lastRow As Long, colNum As Integer,
     Next cell
     On Error GoTo 0
 End Function
-
-Sub ConvertTextToDate(ws As Worksheet, lastRow As Long)
-    Dim rng As Range
-    Set rng = ws.Range(ws.Cells(DATA_START_ROW, COL_PRESCRIPTION), ws.Cells(lastRow, COL_PRESCRIPTION))
-    rng.TextToColumns Destination:=rng.Cells(1, 1), DataType:=xlDelimited, _
-        TextQualifier:=xlDoubleQuote, ConsecutiveDelimiter:=False, _
-        Tab:=False, Semicolon:=False, Comma:=False, Space:=False, Other:=False, _
-        FieldInfo:=Array(1, xlDMYFormat), TrailingMinusNumbers:=True
-End Sub
