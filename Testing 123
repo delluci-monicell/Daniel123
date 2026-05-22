@@ -1,20 +1,55 @@
-Private Sub btnImport_Click()
-    Me.Range("LastPerformedBy").Value = Environ("USERNAME")
-    Me.Range("LastPerformedOn").Value = Now()
-    
+Public Sub btnBrowseNew_Click()
+    Dim fd As FileDialog
+    Set fd = Application.FileDialog(msoFileDialogFilePicker)
+    fd.Title = "Select New Extract File"
+    fd.Filters.Clear
+    fd.Filters.Add "Excel Files", "*.xlsx;*.xlsm;*.xls"
+    fd.AllowMultiSelect = False
+    If fd.Show = -1 Then
+        ThisWorkbook.Sheets("Home").Range("NewExtractPath").Value = fd.SelectedItems(1)
+    End If
+End Sub
+
+Public Sub btnBrowseOld_Click()
+    Dim fd As FileDialog
+    Set fd = Application.FileDialog(msoFileDialogFilePicker)
+    fd.Title = "Select Old Tracker File"
+    fd.Filters.Clear
+    fd.Filters.Add "Excel Files", "*.xlsx;*.xlsm;*.xls"
+    fd.AllowMultiSelect = False
+    If fd.Show = -1 Then
+        ThisWorkbook.Sheets("Home").Range("OldTrackerPath").Value = fd.SelectedItems(1)
+    End If
+End Sub
+
+Public Sub btnDownloadOld_Click()
+    Dim oldPath As String
+    oldPath = ThisWorkbook.Sheets("Home").Range("OldTrackerPath").Value
+    If oldPath = "" Then
+        MsgBox "Please browse and select the old tracker path first.", vbExclamation
+        Exit Sub
+    End If
+    Workbooks.Open oldPath
+    MsgBox "Old tracker opened successfully.", vbInformation
+End Sub
+
+Public Sub btnImport_Click()
+    ThisWorkbook.Sheets("Home").Range("LastPerformedBy").Value = Environ("USERNAME")
+    ThisWorkbook.Sheets("Home").Range("LastPerformedOn").Value = Now()
     Application.ScreenUpdating = False
     Application.DisplayAlerts = False
-    
     Call ImportAndClean
     Call HighlightAndFilter
     Call LookupFromOldTracker
     Call SheetOperations
-    
     Application.ScreenUpdating = True
     Application.DisplayAlerts = True
-    
     MsgBox "Workfile Tracker processed successfully!" & vbNewLine & _
            "Performed by: " & Environ("USERNAME") & vbNewLine & _
            "Date: " & Format(Now(), "DD/MM/YYYY HH:MM"), _
            vbInformation, "Process Complete"
+End Sub
+
+Public Sub btnExport_Click()
+    Call ExportTracker
 End Sub
