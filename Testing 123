@@ -1,33 +1,48 @@
-Sub CopyVisibleToSheet(ws As Worksheet, destWS As Worksheet, lastRow As Long)
-    Dim cell As Range
-    Dim destRow As Long
-    Dim copyRng As Range
-    
-    On Error Resume Next
-    For Each cell In ws.Range("D7:D" & lastRow).SpecialCells(xlCellTypeVisible)
-        If copyRng Is Nothing Then
-            Set copyRng = cell.EntireRow
-        Else
-            Set copyRng = Union(copyRng, cell.EntireRow)
-        End If
-    Next cell
-    On Error GoTo 0
-    
-    If copyRng Is Nothing Then Exit Sub
-    
-    destRow = destWS.Cells(destWS.Rows.Count, "D").End(xlUp).Row + 1
-    
-    copyRng.Copy
-    destWS.Cells(destRow, 1).PasteSpecial Paste:=xlPasteAll
-    destWS.Cells(destRow, 1).PasteSpecial Paste:=xlPasteColumnWidths
-    Application.CutCopyMode = False
-    
-    ' Copy row heights
-    Dim i As Long
-    For i = 7 To lastRow
-        If Not ws.Rows(i).Hidden Then
-            destWS.Rows(destRow).RowHeight = ws.Rows(i).RowHeight
-            destRow = destRow + 1
-        End If
-    Next i
+Private Sub btnBrowseNew_Click()
+    Dim fd As FileDialog
+    Set fd = Application.FileDialog(msoFileDialogFilePicker)
+    fd.Title = "Select New Extract File"
+    fd.Filters.Clear
+    fd.Filters.Add "Excel Files", "*.xlsx;*.xlsm;*.xls"
+    fd.AllowMultiSelect = False
+    If fd.Show = -1 Then
+        Me.Range("NewExtractPath").Value = fd.SelectedItems(1)
+    End If
+End Sub
+
+Private Sub btnBrowseOld_Click()
+    Dim fd As FileDialog
+    Set fd = Application.FileDialog(msoFileDialogFilePicker)
+    fd.Title = "Select Old Tracker File"
+    fd.Filters.Clear
+    fd.Filters.Add "Excel Files", "*.xlsx;*.xlsm;*.xls"
+    fd.AllowMultiSelect = False
+    If fd.Show = -1 Then
+        Me.Range("OldTrackerPath").Value = fd.SelectedItems(1)
+    End If
+End Sub
+
+Private Sub btnDownloadOld_Click()
+    Dim oldPath As String
+    oldPath = Me.Range("OldTrackerPath").Value
+    If oldPath = "" Then
+        MsgBox "Please browse and select the old tracker path first.", vbExclamation
+        Exit Sub
+    End If
+    Workbooks.Open oldPath
+    MsgBox "Old tracker opened successfully.", vbInformation
+End Sub
+
+Private Sub btnImport_Click()
+    ' Automatically pick Windows logged in username
+    Me.Range("LastPerformedBy").Value = Environ("USERNAME")
+    Me.Range("LastPerformedOn").Value = Now()
+    Call ImportAndClean
+    Call HighlightAndFilter
+    Call LookupFromOldTracker
+    Call SheetOperations
+End Sub
+
+Private Sub btnExport_Click()
+    Call ExportTracker
 End Sub
