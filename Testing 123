@@ -30,7 +30,16 @@ Public Sub btnDownloadOld_Click()
         Exit Sub
     End If
     Workbooks.Open oldPath
-    MsgBox "Old tracker opened successfully.", vbInformation
+End Sub
+
+Public Sub btnBrowseOutput_Click()
+    Dim fd As FileDialog
+    Set fd = Application.FileDialog(msoFileDialogFolderPicker)
+    fd.Title = "Select Output Save Folder"
+    fd.AllowMultiSelect = False
+    If fd.Show = -1 Then
+        ThisWorkbook.Sheets("Home").Range("OutputPath").Value = fd.SelectedItems(1)
+    End If
 End Sub
 
 Public Sub btnImport_Click()
