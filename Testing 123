@@ -1,27 +1,760 @@
-Dear Team,
+' ============================================================
+' BUILDER MACRO — Run this once in any Excel (Alt+F8)
+' It will create a fully ready "Workfile Tracker Macro.xlsm"
+' ============================================================
 
-Repeated observations are still being identified in the performance of daily and bi-weekly controls/checklists. Even after multiple emails, refresher trainings, walkthroughs, and reminders, the controls are still not being performed as per the expected timelines and process requirements.
+Sub BUILD_ReclamTracker()
 
-In several cases, controls are being marked as completed without proper supporting evidence. Please note that verbal confirmations, call discussions, or undocumented follow-ups cannot be considered as valid evidence.
+    Dim newXL As Object
+    Dim newWB As Object
+    Dim newWBPath As String
 
-Going forward, if any checklist preparer or respective person is being informed regarding missed follow-ups, pending actions, or deadline-related items, the communication must be sent through email wherever applicable.
+    newWBPath = Environ("USERPROFILE") & "\Desktop\Workfile Tracker Macro.xlsm"
 
-If communication is performed through Teams or calls, proper supporting evidence with sufficient context must be maintained. However, email communication is strongly preferred, as evidence cannot be reliably validated through verbal discussions alone.
+    Set newXL = CreateObject("Excel.Application")
+    newXL.Visible = False
+    Set newWB = newXL.Workbooks.Add
 
-Please understand that if a follow-up is informed only through call discussions, there will be no proper audit trail or evidence available during review.
+    Do While newWB.Sheets.Count > 1
+        newWB.Sheets(newWB.Sheets.Count).Delete
+    Loop
 
-Also, I request validators to be stricter while reviewing checklist controls. Explanations such as “missed this time,” “will perform next time,” or similar responses should not be accepted without proper justification and evidence. If controls are incomplete or unsupported, the checklist/case should be rejected and reworked accordingly.
+    newWB.Sheets(1).Name = "Home"
 
-Checklist preparers are expected to initiate the checks by 2 PM and complete them by 5 PM. Sufficient time is available to manage both BU activities and checklist responsibilities. Validators are also requested to perform detailed and attentive reviews, as the responsibility equally lies at the validator’s end.
+    Call BUILD_HomePage(newWB)
+    Call INJECT_Module1_Constants(newWB)
+    Call INJECT_Module2_Import(newWB)
+    Call INJECT_Module3_Highlight(newWB)
+    Call INJECT_Module4_OldTracker(newWB)
+    Call INJECT_Module5_SheetOps(newWB)
+    Call INJECT_Module6_Export(newWB)
+    Call INJECT_HomePageCode(newWB)
 
-Each individual is requested to reply to this email with:
+    newWB.SaveAs newWBPath, 52
+    newXL.Visible = True
+    newWB.Activate
 
-1. Controls/checklists currently handled
-2. Constraints/challenges faced
-3. Reason for missed/incomplete controls
-4. Any clarification or support required
+    MsgBox "SUCCESS! Your Workfile Tracker Macro has been created at:" & vbNewLine & newWBPath, vbInformation, "Builder Complete"
 
-Please provide your response by [DATE/TIME].
+End Sub
 
-Regards,
-[Your Name]
+' ============================================================
+' BUILD HOME PAGE
+' ============================================================
+Sub BUILD_HomePage(wb As Object)
+
+    Dim ws As Object
+    Set ws = wb.Sheets("Home")
+
+    With ws
+        .Tab.Color = RGB(0, 112, 192)
+
+        .Range("B2").Value = "WORKFILE TRACKER"
+        With .Range("B2")
+            .Font.Size = 20
+            .Font.Bold = True
+            .Font.Color = RGB(0, 70, 127)
+        End With
+
+        .Range("B4").Value = "Last Performed By:"
+        .Range("B4").Font.Bold = True
+        .Range("C4").Value = ""
+        .Range("C4").Name = "LastPerformedBy"
+
+        .Range("B5").Value = "Last Performed On:"
+        .Range("B5").Font.Bold = True
+        .Range("C5").Value = ""
+        .Range("C5").Name = "LastPerformedOn"
+
+        .Range("B7").Value = "NEW EXTRACT"
+        .Range("B7").Font.Bold = True
+        .Range("B7").Font.Size = 12
+        .Range("B7").Font.Color = RGB(0, 70, 127)
+
+        .Range("B8").Value = "File Path:"
+        .Range("C8").Value = ""
+        .Range("C8").Name = "NewExtractPath"
+        With .Range("C8")
+            .Borders.LineStyle = 1
+            .ColumnWidth = 60
+        End With
+
+        .Range("B11").Value = "OLD TRACKER"
+        .Range("B11").Font.Bold = True
+        .Range("B11").Font.Size = 12
+        .Range("B11").Font.Color = RGB(0, 70, 127)
+
+        .Range("B12").Value = "File Path:"
+        .Range("C12").Value = ""
+        .Range("C12").Name = "OldTrackerPath"
+        With .Range("C12")
+            .Borders.LineStyle = 1
+            .ColumnWidth = 60
+        End With
+
+        .Range("B15").Value = "OUTPUT"
+        .Range("B15").Font.Bold = True
+        .Range("B15").Font.Size = 12
+        .Range("B15").Font.Color = RGB(0, 70, 127)
+
+        .Range("B16").Value = "Save To:"
+        .Range("C16").Value = ""
+        .Range("C16").Name = "OutputPath"
+        With .Range("C16")
+            .Borders.LineStyle = 1
+            .ColumnWidth = 60
+        End With
+
+        .Columns("B").ColumnWidth = 18
+        .Columns("C").ColumnWidth = 60
+        .Columns("D").ColumnWidth = 15
+        .Columns("E").ColumnWidth = 15
+
+        .Range("A1:Z50").Interior.Color = RGB(242, 242, 242)
+        .Range("B2:E2").Interior.Color = RGB(255, 255, 255)
+    End With
+
+    Dim btn As Object
+
+    Set btn = ws.OLEObjects.Add(ClassType:="Forms.CommandButton.1", _
+        Left:=ws.Range("D8").Left, Top:=ws.Range("D8").Top, _
+        Width:=100, Height:=22)
+    btn.Name = "btnBrowseNew"
+    btn.Object.Caption = "Browse..."
+    btn.Object.BackColor = RGB(0, 112, 192)
+    btn.Object.ForeColor = RGB(255, 255, 255)
+
+    Set btn = ws.OLEObjects.Add(ClassType:="Forms.CommandButton.1", _
+        Left:=ws.Range("D12").Left, Top:=ws.Range("D12").Top, _
+        Width:=100, Height:=22)
+    btn.Name = "btnBrowseOld"
+    btn.Object.Caption = "Browse..."
+    btn.Object.BackColor = RGB(0, 112, 192)
+    btn.Object.ForeColor = RGB(255, 255, 255)
+
+    Set btn = ws.OLEObjects.Add(ClassType:="Forms.CommandButton.1", _
+        Left:=ws.Range("E12").Left, Top:=ws.Range("E12").Top, _
+        Width:=100, Height:=22)
+    btn.Name = "btnDownloadOld"
+    btn.Object.Caption = "Download"
+    btn.Object.BackColor = RGB(0, 176, 80)
+    btn.Object.ForeColor = RGB(255, 255, 255)
+
+    Set btn = ws.OLEObjects.Add(ClassType:="Forms.CommandButton.1", _
+        Left:=ws.Range("C19").Left, Top:=ws.Range("C19").Top, _
+        Width:=160, Height:=35)
+    btn.Name = "btnImport"
+    btn.Object.Caption = "IMPORT & PROCESS DATA"
+    btn.Object.BackColor = RGB(0, 70, 127)
+    btn.Object.ForeColor = RGB(255, 255, 255)
+    btn.Object.Font.Bold = True
+    btn.Object.Font.Size = 11
+
+    Set btn = ws.OLEObjects.Add(ClassType:="Forms.CommandButton.1", _
+        Left:=ws.Range("C21").Left, Top:=ws.Range("C21").Top, _
+        Width:=160, Height:=35)
+    btn.Name = "btnExport"
+    btn.Object.Caption = "EXPORT TRACKER"
+    btn.Object.BackColor = RGB(0, 176, 80)
+    btn.Object.ForeColor = RGB(255, 255, 255)
+    btn.Object.Font.Bold = True
+    btn.Object.Font.Size = 11
+
+End Sub
+
+' ============================================================
+' MODULE 1 — CONSTANTS
+' ============================================================
+Sub INJECT_Module1_Constants(wb As Object)
+    Dim mdl As Object
+    Set mdl = wb.VBProject.VBComponents.Add(1)
+    mdl.Name = "Mod1_Constants"
+
+    Dim c As String
+    c = "" & vbNewLine
+    c = c & "' ============================================================" & vbNewLine
+    c = c & "' MODULE 1 - CONFIGURABLE CONSTANTS" & vbNewLine
+    c = c & "' Change values here - no need to touch other code" & vbNewLine
+    c = c & "' ============================================================" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "Public Const SLA_MIN As Integer = 0" & vbNewLine
+    c = c & "Public Const SLA_MAX As Integer = 45" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "Public Const YEAR_1 As String = ""2026""" & vbNewLine
+    c = c & "Public Const YEAR_2 As String = ""2027""" & vbNewLine
+    c = c & "Public Const YEAR_3 As String = ""2028""" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "Public Const COUNTRY_2027 As String = ""Kingdom of the Netherlands""" & vbNewLine
+    c = c & "Public Const COUNTRY_2028 As String = ""Germany""" & vbNewLine
+    c = c & "Public Const LEGAL_STATUS_FILTER As String = ""Individual""" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "Public Const VALID_CHECKED_STATUS As String = ""Valid-Checked""" & vbNewLine
+    c = c & "Public Const PENDING_KEYWORD As String = ""pending""" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "' Column positions AFTER inserting 3 cols at E" & vbNewLine
+    c = c & "Public Const COL_SLA As Integer = 1         ' A" & vbNewLine
+    c = c & "Public Const COL_RECEIPT As Integer = 2     ' B" & vbNewLine
+    c = c & "Public Const COL_TAXDOC As Integer = 3      ' C" & vbNewLine
+    c = c & "Public Const COL_FORMREF As Integer = 4     ' D" & vbNewLine
+    c = c & "Public Const COL_NAME As Integer = 5        ' E new" & vbNewLine
+    c = c & "Public Const COL_ALLOCDATE As Integer = 6   ' F new" & vbNewLine
+    c = c & "Public Const COL_COMMENTS As Integer = 7    ' G new" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "' NOTE: Columns below are shifted +3 after inserting E,F,G" & vbNewLine
+    c = c & "' Original M=13 becomes col 16 after shift" & vbNewLine
+    c = c & "Public Const COL_FORMSTATUS As Integer = 16   ' M shifted" & vbNewLine
+    c = c & "Public Const COL_PRESCRIPTION As Integer = 33 ' AA shifted" & vbNewLine
+    c = c & "Public Const COL_FISCALCOUNTRY As Integer = 27 ' X shifted" & vbNewLine
+    c = c & "Public Const COL_LEGALSTATUS As Integer = 48   ' AS shifted" & vbNewLine
+    c = c & "Public Const COL_SOL As Integer = 47           ' AT shifted" & vbNewLine
+    c = c & "Public Const COL_SOL2 As Integer = 49          ' AU shifted" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "Public Const HEADER_ROW As Integer = 6" & vbNewLine
+    c = c & "Public Const DATA_START_ROW As Integer = 7" & vbNewLine
+
+    mdl.CodeModule.AddFromString c
+End Sub
+
+' ============================================================
+' MODULE 2 — IMPORT & CLEAN
+' ============================================================
+Sub INJECT_Module2_Import(wb As Object)
+    Dim mdl As Object
+    Set mdl = wb.VBProject.VBComponents.Add(1)
+    mdl.Name = "Mod2_Import"
+
+    Dim c As String
+    c = "" & vbNewLine
+    c = c & "Sub ImportAndClean()" & vbNewLine
+    c = c & "    Dim homeSht As Worksheet" & vbNewLine
+    c = c & "    Dim newPath As String" & vbNewLine
+    c = c & "    Dim srcWB As Workbook, srcWS As Worksheet" & vbNewLine
+    c = c & "    Dim destWS As Worksheet" & vbNewLine
+    c = c & "    Dim lastRow As Long" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    Set homeSht = ThisWorkbook.Sheets(""Home"")" & vbNewLine
+    c = c & "    newPath = homeSht.Range(""NewExtractPath"").Value" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    If newPath = """" Then" & vbNewLine
+    c = c & "        MsgBox ""Please browse and select the new extract file first."", vbExclamation" & vbNewLine
+    c = c & "        Exit Sub" & vbNewLine
+    c = c & "    End If" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    Set srcWB = Workbooks.Open(newPath, ReadOnly:=True)" & vbNewLine
+    c = c & "    Set srcWS = srcWB.Sheets(1)" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    Application.DisplayAlerts = False" & vbNewLine
+    c = c & "    On Error Resume Next" & vbNewLine
+    c = c & "    ThisWorkbook.Sheets(""L1 Allocation"").Delete" & vbNewLine
+    c = c & "    ThisWorkbook.Sheets(""L2 Allocation"").Delete" & vbNewLine
+    c = c & "    ThisWorkbook.Sheets(""Working"").Delete" & vbNewLine
+    c = c & "    On Error GoTo 0" & vbNewLine
+    c = c & "    Application.DisplayAlerts = True" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    Set destWS = ThisWorkbook.Sheets.Add(After:=ThisWorkbook.Sheets(""Home""))" & vbNewLine
+    c = c & "    destWS.Name = ""Working""" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    srcWS.UsedRange.Copy" & vbNewLine
+    c = c & "    destWS.Range(""A1"").PasteSpecial Paste:=xlPasteAll" & vbNewLine
+    c = c & "    destWS.Range(""A1"").PasteSpecial Paste:=xlPasteColumnWidths" & vbNewLine
+    c = c & "    Application.CutCopyMode = False" & vbNewLine
+    c = c & "    srcWB.Close SaveChanges:=False" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    ' Delete Row 1 (title row)" & vbNewLine
+    c = c & "    destWS.Rows(1).Delete" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    ' Clear col A data, rename header as SLA" & vbNewLine
+    c = c & "    lastRow = destWS.Cells(destWS.Rows.Count, ""D"").End(xlUp).Row" & vbNewLine
+    c = c & "    destWS.Range(""A1:A"" & lastRow).ClearContents" & vbNewLine
+    c = c & "    destWS.Range(""A1"").Value = ""SLA""" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    ' Copy entire AO column to column B" & vbNewLine
+    c = c & "    destWS.Columns(""AO"").Copy" & vbNewLine
+    c = c & "    destWS.Columns(""B"").PasteSpecial Paste:=xlPasteAll" & vbNewLine
+    c = c & "    Application.CutCopyMode = False" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    ' Format col A as General, enter TODAY()-B formula" & vbNewLine
+    c = c & "    lastRow = destWS.Cells(destWS.Rows.Count, ""B"").End(xlUp).Row" & vbNewLine
+    c = c & "    destWS.Columns(""A"").NumberFormat = ""General""" & vbNewLine
+    c = c & "    Dim i As Long" & vbNewLine
+    c = c & "    For i = 2 To lastRow" & vbNewLine
+    c = c & "        If destWS.Cells(i, ""B"").Value <> """" Then" & vbNewLine
+    c = c & "            destWS.Cells(i, ""A"").Formula = ""=TODAY()-B"" & i" & vbNewLine
+    c = c & "        End If" & vbNewLine
+    c = c & "    Next i" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    ' Paste A as values" & vbNewLine
+    c = c & "    destWS.Range(""A2:A"" & lastRow).Copy" & vbNewLine
+    c = c & "    destWS.Range(""A2"").PasteSpecial Paste:=xlPasteValues" & vbNewLine
+    c = c & "    Application.CutCopyMode = False" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    ' Insert 5 rows at top" & vbNewLine
+    c = c & "    destWS.Rows(""1:5"").Insert Shift:=xlDown" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    ' Legend row 2 - SLA (Blue)" & vbNewLine
+    c = c & "    destWS.Range(""C2"").Value = ""SLA""" & vbNewLine
+    c = c & "    destWS.Range(""C2"").Interior.Color = RGB(189, 215, 238)" & vbNewLine
+    c = c & "    destWS.Range(""D2"").Value = ""SLA""" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    ' Legend row 3 - SOL (Olive Green)" & vbNewLine
+    c = c & "    destWS.Range(""C3"").Value = ""SOL""" & vbNewLine
+    c = c & "    destWS.Range(""C3"").Interior.Color = RGB(217, 225, 148)" & vbNewLine
+    c = c & "    destWS.Range(""D3"").Value = ""SOL""" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    ' Insert 3 new columns at E" & vbNewLine
+    c = c & "    destWS.Columns(""E:G"").Insert Shift:=xlToRight" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    ' Match formatting of col H" & vbNewLine
+    c = c & "    destWS.Columns(""H"").Copy" & vbNewLine
+    c = c & "    destWS.Columns(""E"").PasteSpecial Paste:=xlPasteFormats" & vbNewLine
+    c = c & "    destWS.Columns(""F"").PasteSpecial Paste:=xlPasteFormats" & vbNewLine
+    c = c & "    destWS.Columns(""G"").PasteSpecial Paste:=xlPasteFormats" & vbNewLine
+    c = c & "    Application.CutCopyMode = False" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    ' Rename new column headers" & vbNewLine
+    c = c & "    destWS.Cells(HEADER_ROW, 5).Value = ""Allocation""" & vbNewLine
+    c = c & "    destWS.Cells(HEADER_ROW, 6).Value = ""Allocation date""" & vbNewLine
+    c = c & "    destWS.Cells(HEADER_ROW, 7).Value = ""Comments""" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    ThisWorkbook.Sheets(""Home"").Range(""LastPerformedOn"").Value = Now()" & vbNewLine
+    c = c & "    MsgBox ""Import and Clean complete!"", vbInformation" & vbNewLine
+    c = c & "End Sub" & vbNewLine
+
+    mdl.CodeModule.AddFromString c
+End Sub
+
+' ============================================================
+' MODULE 3 — HIGHLIGHTING
+' ============================================================
+Sub INJECT_Module3_Highlight(wb As Object)
+    Dim mdl As Object
+    Set mdl = wb.VBProject.VBComponents.Add(1)
+    mdl.Name = "Mod3_Highlight"
+
+    Dim c As String
+    c = "" & vbNewLine
+    c = c & "Sub HighlightAndFilter()" & vbNewLine
+    c = c & "    Dim ws As Worksheet" & vbNewLine
+    c = c & "    Set ws = ThisWorkbook.Sheets(""Working"")" & vbNewLine
+    c = c & "    Dim lastRow As Long" & vbNewLine
+    c = c & "    lastRow = ws.Cells(ws.Rows.Count, ""D"").End(xlUp).Row" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    If ws.AutoFilterMode Then ws.AutoFilterMode = False" & vbNewLine
+    c = c & "    ws.Rows(HEADER_ROW).AutoFilter" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    ' STEP 1: SLA 0-45 filter - highlight D Blue" & vbNewLine
+    c = c & "    ws.Range(""A"" & HEADER_ROW).AutoFilter Field:=1, _" & vbNewLine
+    c = c & "        Criteria1:"">="" & SLA_MIN, Operator:=xlAnd, Criteria2:=""<="" & SLA_MAX" & vbNewLine
+    c = c & "    Call HighlightVisibleColD(ws, lastRow, RGB(189, 215, 238))" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    If ws.AutoFilterMode Then ws.AutoFilterMode = False" & vbNewLine
+    c = c & "    ws.Rows(HEADER_ROW).AutoFilter" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    ' STEP 2: Filter D by No Fill" & vbNewLine
+    c = c & "    ws.Range(""D"" & HEADER_ROW).AutoFilter Field:=4, _" & vbNewLine
+    c = c & "        Criteria1:=xlFilterNoFill, Operator:=xlFilterCellColor" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    ' STEP 3: Convert AA Prescription Date from text to date" & vbNewLine
+    c = c & "    Call ConvertTextToDate(ws, lastRow)" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    ' STEP 4: AA = 2026 - highlight D Olive Green" & vbNewLine
+    c = c & "    ws.Range(""A"" & HEADER_ROW).AutoFilter Field:=COL_PRESCRIPTION, _" & vbNewLine
+    c = c & "        Criteria1:"">=""  & YEAR_1 & ""/1/1"", Operator:=xlAnd, _" & vbNewLine
+    c = c & "        Criteria2:=""<="" & YEAR_1 & ""/12/31""" & vbNewLine
+    c = c & "    Call HighlightVisibleColD(ws, lastRow, RGB(217, 225, 148))" & vbNewLine
+    c = c & "    ws.Range(""A"" & HEADER_ROW).AutoFilter Field:=COL_PRESCRIPTION" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    ' STEP 5: AA = 2027 + Netherlands + Individual" & vbNewLine
+    c = c & "    ws.Range(""A"" & HEADER_ROW).AutoFilter Field:=COL_PRESCRIPTION, _" & vbNewLine
+    c = c & "        Criteria1:"">="" & YEAR_2 & ""/1/1"", Operator:=xlAnd, _" & vbNewLine
+    c = c & "        Criteria2:=""<="" & YEAR_2 & ""/12/31""" & vbNewLine
+    c = c & "    ws.Range(""A"" & HEADER_ROW).AutoFilter Field:=COL_FISCALCOUNTRY, _" & vbNewLine
+    c = c & "        Criteria1:=""*"" & COUNTRY_2027 & ""*""" & vbNewLine
+    c = c & "    If CheckIfValueExists(ws, lastRow, COL_LEGALSTATUS, LEGAL_STATUS_FILTER) Then" & vbNewLine
+    c = c & "        ws.Range(""A"" & HEADER_ROW).AutoFilter Field:=COL_LEGALSTATUS, _" & vbNewLine
+    c = c & "            Criteria1:=LEGAL_STATUS_FILTER" & vbNewLine
+    c = c & "        Call HighlightVisibleColD(ws, lastRow, RGB(217, 225, 148))" & vbNewLine
+    c = c & "        ws.Range(""A"" & HEADER_ROW).AutoFilter Field:=COL_LEGALSTATUS" & vbNewLine
+    c = c & "    End If" & vbNewLine
+    c = c & "    ws.Range(""A"" & HEADER_ROW).AutoFilter Field:=COL_FISCALCOUNTRY" & vbNewLine
+    c = c & "    ws.Range(""A"" & HEADER_ROW).AutoFilter Field:=COL_PRESCRIPTION" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    ' STEP 6: AA = 2028 + Germany + Individual" & vbNewLine
+    c = c & "    ws.Range(""A"" & HEADER_ROW).AutoFilter Field:=COL_PRESCRIPTION, _" & vbNewLine
+    c = c & "        Criteria1:"">="" & YEAR_3 & ""/1/1"", Operator:=xlAnd, _" & vbNewLine
+    c = c & "        Criteria2:=""<="" & YEAR_3 & ""/12/31""" & vbNewLine
+    c = c & "    ws.Range(""A"" & HEADER_ROW).AutoFilter Field:=COL_FISCALCOUNTRY, _" & vbNewLine
+    c = c & "        Criteria1:=""*"" & COUNTRY_2028 & ""*""" & vbNewLine
+    c = c & "    If CheckIfValueExists(ws, lastRow, COL_LEGALSTATUS, LEGAL_STATUS_FILTER) Then" & vbNewLine
+    c = c & "        ws.Range(""A"" & HEADER_ROW).AutoFilter Field:=COL_LEGALSTATUS, _" & vbNewLine
+    c = c & "            Criteria1:=LEGAL_STATUS_FILTER" & vbNewLine
+    c = c & "        Call HighlightVisibleColD(ws, lastRow, RGB(217, 225, 148))" & vbNewLine
+    c = c & "        ws.Range(""A"" & HEADER_ROW).AutoFilter Field:=COL_LEGALSTATUS" & vbNewLine
+    c = c & "    End If" & vbNewLine
+    c = c & "    ws.Range(""A"" & HEADER_ROW).AutoFilter Field:=COL_FISCALCOUNTRY" & vbNewLine
+    c = c & "    ws.Range(""A"" & HEADER_ROW).AutoFilter Field:=COL_PRESCRIPTION" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    ' Clear ALL filters" & vbNewLine
+    c = c & "    If ws.AutoFilterMode Then ws.AutoFilterMode = False" & vbNewLine
+    c = c & "    MsgBox ""Highlighting complete!"", vbInformation" & vbNewLine
+    c = c & "End Sub" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "Sub HighlightVisibleColD(ws As Worksheet, lastRow As Long, clr As Long)" & vbNewLine
+    c = c & "    Dim cell As Range" & vbNewLine
+    c = c & "    On Error Resume Next" & vbNewLine
+    c = c & "    For Each cell In ws.Range(""D"" & DATA_START_ROW & "":D"" & lastRow).SpecialCells(xlCellTypeVisible)" & vbNewLine
+    c = c & "        cell.Interior.Color = clr" & vbNewLine
+    c = c & "    Next cell" & vbNewLine
+    c = c & "    On Error GoTo 0" & vbNewLine
+    c = c & "End Sub" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "Function CheckIfValueExists(ws As Worksheet, lastRow As Long, colNum As Integer, searchVal As String) As Boolean" & vbNewLine
+    c = c & "    Dim cell As Range" & vbNewLine
+    c = c & "    CheckIfValueExists = False" & vbNewLine
+    c = c & "    On Error Resume Next" & vbNewLine
+    c = c & "    For Each cell In ws.Range(ws.Cells(DATA_START_ROW, colNum), ws.Cells(lastRow, colNum)).SpecialCells(xlCellTypeVisible)" & vbNewLine
+    c = c & "        If InStr(1, CStr(cell.Value), searchVal, vbTextCompare) > 0 Then" & vbNewLine
+    c = c & "            CheckIfValueExists = True" & vbNewLine
+    c = c & "            Exit Function" & vbNewLine
+    c = c & "        End If" & vbNewLine
+    c = c & "    Next cell" & vbNewLine
+    c = c & "    On Error GoTo 0" & vbNewLine
+    c = c & "End Function" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "Sub ConvertTextToDate(ws As Worksheet, lastRow As Long)" & vbNewLine
+    c = c & "    Dim rng As Range" & vbNewLine
+    c = c & "    Set rng = ws.Range(ws.Cells(DATA_START_ROW, COL_PRESCRIPTION), ws.Cells(lastRow, COL_PRESCRIPTION))" & vbNewLine
+    c = c & "    rng.TextToColumns Destination:=rng.Cells(1, 1), DataType:=xlDelimited, _" & vbNewLine
+    c = c & "        TextQualifier:=xlDoubleQuote, ConsecutiveDelimiter:=False, _" & vbNewLine
+    c = c & "        Tab:=False, Semicolon:=False, Comma:=False, Space:=False, Other:=False, _" & vbNewLine
+    c = c & "        FieldInfo:=Array(1, xlDMYFormat), TrailingMinusNumbers:=True" & vbNewLine
+    c = c & "End Sub" & vbNewLine
+
+    mdl.CodeModule.AddFromString c
+End Sub
+
+' ============================================================
+' MODULE 4 — OLD TRACKER VLOOKUP
+' ============================================================
+Sub INJECT_Module4_OldTracker(wb As Object)
+    Dim mdl As Object
+    Set mdl = wb.VBProject.VBComponents.Add(1)
+    mdl.Name = "Mod4_OldTracker"
+
+    Dim c As String
+    c = "" & vbNewLine
+    c = c & "Sub LookupFromOldTracker()" & vbNewLine
+    c = c & "    Dim homeSht As Worksheet" & vbNewLine
+    c = c & "    Dim oldPath As String" & vbNewLine
+    c = c & "    Dim oldWB As Workbook" & vbNewLine
+    c = c & "    Dim ws As Worksheet, sht As Worksheet" & vbNewLine
+    c = c & "    Dim lastRow As Long" & vbNewLine
+    c = c & "    Dim i As Long" & vbNewLine
+    c = c & "    Dim lookupVal As String" & vbNewLine
+    c = c & "    Dim foundCell As Range" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    Set homeSht = ThisWorkbook.Sheets(""Home"")" & vbNewLine
+    c = c & "    oldPath = homeSht.Range(""OldTrackerPath"").Value" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    If oldPath = """" Then" & vbNewLine
+    c = c & "        MsgBox ""Please browse and select the old tracker file first."", vbExclamation" & vbNewLine
+    c = c & "        Exit Sub" & vbNewLine
+    c = c & "    End If" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    Set oldWB = Workbooks.Open(oldPath)" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    ' Remove filters in all old tracker sheets" & vbNewLine
+    c = c & "    For Each sht In oldWB.Sheets" & vbNewLine
+    c = c & "        If sht.AutoFilterMode Then sht.AutoFilterMode = False" & vbNewLine
+    c = c & "    Next sht" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    Dim l1Sht As Worksheet, l2Sht As Worksheet" & vbNewLine
+    c = c & "    Set l1Sht = oldWB.Sheets(1)" & vbNewLine
+    c = c & "    Set l2Sht = oldWB.Sheets(2)" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    ' Dynamic header detection" & vbNewLine
+    c = c & "    Dim l1Hdr As Long, l2Hdr As Long" & vbNewLine
+    c = c & "    l1Hdr = FindHeaderRow(l1Sht)" & vbNewLine
+    c = c & "    l2Hdr = FindHeaderRow(l2Sht)" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    Set ws = ThisWorkbook.Sheets(""Working"")" & vbNewLine
+    c = c & "    lastRow = ws.Cells(ws.Rows.Count, ""D"").End(xlUp).Row" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    For i = DATA_START_ROW To lastRow" & vbNewLine
+    c = c & "        lookupVal = CStr(ws.Cells(i, COL_FORMREF).Value)" & vbNewLine
+    c = c & "        If lookupVal = """" Then GoTo NextRow" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "        Set foundCell = SearchInSheet(l1Sht, l1Hdr, lookupVal)" & vbNewLine
+    c = c & "        If foundCell Is Nothing Then" & vbNewLine
+    c = c & "            Set foundCell = SearchInSheet(l2Sht, l2Hdr, lookupVal)" & vbNewLine
+    c = c & "        End If" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "        If Not foundCell Is Nothing Then" & vbNewLine
+    c = c & "            ws.Cells(i, COL_NAME).Value = foundCell.Offset(0, 1).Value" & vbNewLine
+    c = c & "            ws.Cells(i, COL_ALLOCDATE).Value = foundCell.Offset(0, 2).Value" & vbNewLine
+    c = c & "            ws.Cells(i, COL_COMMENTS).Value = foundCell.Offset(0, 3).Value" & vbNewLine
+    c = c & "        End If" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "        NextRow:" & vbNewLine
+    c = c & "    Next i" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    ' Paste E F G as values only" & vbNewLine
+    c = c & "    ws.Range(ws.Cells(DATA_START_ROW, COL_NAME), ws.Cells(lastRow, COL_COMMENTS)).Copy" & vbNewLine
+    c = c & "    ws.Cells(DATA_START_ROW, COL_NAME).PasteSpecial Paste:=xlPasteValues" & vbNewLine
+    c = c & "    Application.CutCopyMode = False" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    ' Format F as short date, E and G as General" & vbNewLine
+    c = c & "    ws.Range(ws.Cells(DATA_START_ROW, COL_ALLOCDATE), ws.Cells(lastRow, COL_ALLOCDATE)).NumberFormat = ""dd/mm/yyyy""" & vbNewLine
+    c = c & "    ws.Range(ws.Cells(DATA_START_ROW, COL_NAME), ws.Cells(lastRow, COL_NAME)).NumberFormat = ""General""" & vbNewLine
+    c = c & "    ws.Range(ws.Cells(DATA_START_ROW, COL_COMMENTS), ws.Cells(lastRow, COL_COMMENTS)).NumberFormat = ""General""" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    oldWB.Close SaveChanges:=False" & vbNewLine
+    c = c & "    MsgBox ""Lookup from old tracker complete!"", vbInformation" & vbNewLine
+    c = c & "End Sub" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "Function FindHeaderRow(sht As Worksheet) As Long" & vbNewLine
+    c = c & "    Dim i As Long" & vbNewLine
+    c = c & "    For i = 1 To 50" & vbNewLine
+    c = c & "        If sht.Cells(i, 1).Value <> """" Then" & vbNewLine
+    c = c & "            FindHeaderRow = i" & vbNewLine
+    c = c & "            Exit Function" & vbNewLine
+    c = c & "        End If" & vbNewLine
+    c = c & "    Next i" & vbNewLine
+    c = c & "    FindHeaderRow = 1" & vbNewLine
+    c = c & "End Function" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "Function SearchInSheet(sht As Worksheet, hdrRow As Long, lookupVal As String) As Range" & vbNewLine
+    c = c & "    Dim lastRow As Long" & vbNewLine
+    c = c & "    Dim dataStart As Long" & vbNewLine
+    c = c & "    lastRow = sht.Cells(sht.Rows.Count, ""D"").End(xlUp).Row" & vbNewLine
+    c = c & "    dataStart = hdrRow + 1" & vbNewLine
+    c = c & "    If dataStart > lastRow Then Set SearchInSheet = Nothing: Exit Function" & vbNewLine
+    c = c & "    Set SearchInSheet = sht.Range(""D"" & dataStart & "":D"" & lastRow).Find(What:=lookupVal, LookIn:=xlValues, LookAt:=xlWhole)" & vbNewLine
+    c = c & "End Function" & vbNewLine
+
+    mdl.CodeModule.AddFromString c
+End Sub
+
+' ============================================================
+' MODULE 5 — SHEET OPERATIONS
+' ============================================================
+Sub INJECT_Module5_SheetOps(wb As Object)
+    Dim mdl As Object
+    Set mdl = wb.VBProject.VBComponents.Add(1)
+    mdl.Name = "Mod5_SheetOps"
+
+    Dim c As String
+    c = "" & vbNewLine
+    c = c & "Sub SheetOperations()" & vbNewLine
+    c = c & "    Dim ws As Worksheet" & vbNewLine
+    c = c & "    Set ws = ThisWorkbook.Sheets(""Working"")" & vbNewLine
+    c = c & "    Dim lastRow As Long" & vbNewLine
+    c = c & "    lastRow = ws.Cells(ws.Rows.Count, ""D"").End(xlUp).Row" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    If ws.AutoFilterMode Then ws.AutoFilterMode = False" & vbNewLine
+    c = c & "    ws.Rows(HEADER_ROW).AutoFilter" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    ' STEP 1: Filter Valid-Checked in Form Status col" & vbNewLine
+    c = c & "    ws.Range(""A"" & HEADER_ROW).AutoFilter Field:=COL_FORMSTATUS, Criteria1:=VALID_CHECKED_STATUS" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    ' Create L2 sheet" & vbNewLine
+    c = c & "    Dim l2WS As Worksheet" & vbNewLine
+    c = c & "    Application.DisplayAlerts = False" & vbNewLine
+    c = c & "    On Error Resume Next" & vbNewLine
+    c = c & "    ThisWorkbook.Sheets(""L2 Allocation"").Delete" & vbNewLine
+    c = c & "    On Error GoTo 0" & vbNewLine
+    c = c & "    Application.DisplayAlerts = True" & vbNewLine
+    c = c & "    Set l2WS = ThisWorkbook.Sheets.Add(After:=ws)" & vbNewLine
+    c = c & "    l2WS.Name = ""L2 Allocation""" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    ' Copy visible range to L2 (includes legend + header + data)" & vbNewLine
+    c = c & "    ws.UsedRange.SpecialCells(xlCellTypeVisible).Copy" & vbNewLine
+    c = c & "    l2WS.Range(""A1"").PasteSpecial Paste:=xlPasteAll" & vbNewLine
+    c = c & "    l2WS.Range(""A1"").PasteSpecial Paste:=xlPasteColumnWidths" & vbNewLine
+    c = c & "    Application.CutCopyMode = False" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    ' Delete Valid-Checked rows from working sheet" & vbNewLine
+    c = c & "    Call DeleteVisibleDataRows(ws, lastRow)" & vbNewLine
+    c = c & "    If ws.AutoFilterMode Then ws.AutoFilterMode = False" & vbNewLine
+    c = c & "    ws.Rows(HEADER_ROW).AutoFilter" & vbNewLine
+    c = c & "    lastRow = ws.Cells(ws.Rows.Count, ""D"").End(xlUp).Row" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    ' STEP 2: Filter AU contains pending" & vbNewLine
+    c = c & "    ws.Range(""A"" & HEADER_ROW).AutoFilter Field:=COL_SOL2, Criteria1:=""*"" & PENDING_KEYWORD & ""*""" & vbNewLine
+    c = c & "    Call CopyVisibleToSheet(ws, l2WS, lastRow)" & vbNewLine
+    c = c & "    Call DeleteVisibleDataRows(ws, lastRow)" & vbNewLine
+    c = c & "    ws.Range(""A"" & HEADER_ROW).AutoFilter Field:=COL_SOL2" & vbNewLine
+    c = c & "    lastRow = ws.Cells(ws.Rows.Count, ""D"").End(xlUp).Row" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    ' STEP 3: Filter AT contains pending" & vbNewLine
+    c = c & "    ws.Range(""A"" & HEADER_ROW).AutoFilter Field:=COL_SOL, Criteria1:=""*"" & PENDING_KEYWORD & ""*""" & vbNewLine
+    c = c & "    Call CopyVisibleToSheet(ws, l2WS, lastRow)" & vbNewLine
+    c = c & "    Call DeleteVisibleDataRows(ws, lastRow)" & vbNewLine
+    c = c & "    ws.Range(""A"" & HEADER_ROW).AutoFilter Field:=COL_SOL" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    ' Clear all filters" & vbNewLine
+    c = c & "    If ws.AutoFilterMode Then ws.AutoFilterMode = False" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    ' Rename working sheet to L1 Allocation" & vbNewLine
+    c = c & "    ws.Name = ""L1 Allocation""" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    ' Format header row in both sheets" & vbNewLine
+    c = c & "    Call FormatHeaderRow(ThisWorkbook.Sheets(""L1 Allocation""))" & vbNewLine
+    c = c & "    Call FormatHeaderRow(l2WS)" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    MsgBox ""Sheet operations complete!"", vbInformation" & vbNewLine
+    c = c & "End Sub" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "Sub DeleteVisibleDataRows(ws As Worksheet, lastRow As Long)" & vbNewLine
+    c = c & "    Dim cell As Range, delRng As Range" & vbNewLine
+    c = c & "    On Error Resume Next" & vbNewLine
+    c = c & "    For Each cell In ws.Range(""A"" & DATA_START_ROW & "":A"" & lastRow).SpecialCells(xlCellTypeVisible)" & vbNewLine
+    c = c & "        If delRng Is Nothing Then" & vbNewLine
+    c = c & "            Set delRng = cell.EntireRow" & vbNewLine
+    c = c & "        Else" & vbNewLine
+    c = c & "            Set delRng = Union(delRng, cell.EntireRow)" & vbNewLine
+    c = c & "        End If" & vbNewLine
+    c = c & "    Next cell" & vbNewLine
+    c = c & "    If Not delRng Is Nothing Then delRng.Delete" & vbNewLine
+    c = c & "    On Error GoTo 0" & vbNewLine
+    c = c & "End Sub" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "Sub CopyVisibleToSheet(ws As Worksheet, destWS As Worksheet, lastRow As Long)" & vbNewLine
+    c = c & "    Dim visRng As Range" & vbNewLine
+    c = c & "    Dim destRow As Long" & vbNewLine
+    c = c & "    On Error Resume Next" & vbNewLine
+    c = c & "    Set visRng = ws.Range(""A"" & DATA_START_ROW & "":"" & _" & vbNewLine
+    c = c & "        ws.Cells(lastRow, ws.UsedRange.Columns.Count).Address).SpecialCells(xlCellTypeVisible)" & vbNewLine
+    c = c & "    On Error GoTo 0" & vbNewLine
+    c = c & "    If visRng Is Nothing Then Exit Sub" & vbNewLine
+    c = c & "    destRow = destWS.Cells(destWS.Rows.Count, ""A"").End(xlUp).Row + 1" & vbNewLine
+    c = c & "    visRng.Copy" & vbNewLine
+    c = c & "    destWS.Cells(destRow, 1).PasteSpecial Paste:=xlPasteAll" & vbNewLine
+    c = c & "    destWS.Cells(destRow, 1).PasteSpecial Paste:=xlPasteColumnWidths" & vbNewLine
+    c = c & "    Application.CutCopyMode = False" & vbNewLine
+    c = c & "End Sub" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "Sub FormatHeaderRow(ws As Worksheet)" & vbNewLine
+    c = c & "    ' A6 B6 - Olive Green Accent3 Lighter 40%" & vbNewLine
+    c = c & "    ws.Cells(HEADER_ROW, 1).Interior.Color = RGB(146, 208, 80)" & vbNewLine
+    c = c & "    ws.Cells(HEADER_ROW, 2).Interior.Color = RGB(146, 208, 80)" & vbNewLine
+    c = c & "    ' E6 F6 G6 - Red Accent2 Lighter 60%" & vbNewLine
+    c = c & "    ws.Cells(HEADER_ROW, 5).Interior.Color = RGB(255, 153, 153)" & vbNewLine
+    c = c & "    ws.Cells(HEADER_ROW, 6).Interior.Color = RGB(255, 153, 153)" & vbNewLine
+    c = c & "    ws.Cells(HEADER_ROW, 7).Interior.Color = RGB(255, 153, 153)" & vbNewLine
+    c = c & "End Sub" & vbNewLine
+
+    mdl.CodeModule.AddFromString c
+End Sub
+
+' ============================================================
+' MODULE 6 — EXPORT
+' ============================================================
+Sub INJECT_Module6_Export(wb As Object)
+    Dim mdl As Object
+    Set mdl = wb.VBProject.VBComponents.Add(1)
+    mdl.Name = "Mod6_Export"
+
+    Dim c As String
+    c = "" & vbNewLine
+    c = c & "Sub ExportTracker()" & vbNewLine
+    c = c & "    Dim homeSht As Worksheet" & vbNewLine
+    c = c & "    Dim outputPath As String" & vbNewLine
+    c = c & "    Dim exportWB As Workbook" & vbNewLine
+    c = c & "    Dim exportName As String" & vbNewLine
+    c = c & "    Dim sht As Worksheet" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    Set homeSht = ThisWorkbook.Sheets(""Home"")" & vbNewLine
+    c = c & "    outputPath = homeSht.Range(""OutputPath"").Value" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    If outputPath = """" Then" & vbNewLine
+    c = c & "        MsgBox ""Please enter an output save path on the Home page."", vbExclamation" & vbNewLine
+    c = c & "        Exit Sub" & vbNewLine
+    c = c & "    End If" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    exportName = ""Workfile Tracker "" & Format(Now(), ""DD.MM.YYYY"") & "".xlsx""" & vbNewLine
+    c = c & "    If Right(outputPath, 1) <> ""\"" Then outputPath = outputPath & ""\""" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    Set exportWB = Workbooks.Add" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    ThisWorkbook.Sheets(""L1 Allocation"").Copy Before:=exportWB.Sheets(1)" & vbNewLine
+    c = c & "    ThisWorkbook.Sheets(""L2 Allocation"").Copy After:=exportWB.Sheets(exportWB.Sheets.Count)" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    Application.DisplayAlerts = False" & vbNewLine
+    c = c & "    For Each sht In exportWB.Sheets" & vbNewLine
+    c = c & "        If sht.Name <> ""L1 Allocation"" And sht.Name <> ""L2 Allocation"" Then" & vbNewLine
+    c = c & "            sht.Delete" & vbNewLine
+    c = c & "        End If" & vbNewLine
+    c = c & "    Next sht" & vbNewLine
+    c = c & "    Application.DisplayAlerts = True" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    exportWB.SaveAs outputPath & exportName, xlOpenXMLWorkbook" & vbNewLine
+    c = c & "    exportWB.Close" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "    MsgBox ""Export complete!"" & vbNewLine & ""Saved to: "" & outputPath & exportName, vbInformation" & vbNewLine
+    c = c & "End Sub" & vbNewLine
+
+    mdl.CodeModule.AddFromString c
+End Sub
+
+' ============================================================
+' HOME PAGE BUTTON CODE
+' ============================================================
+Sub INJECT_HomePageCode(wb As Object)
+    Dim mdl As Object
+    Set mdl = wb.VBProject.VBComponents("Sheet1")
+
+    Dim c As String
+    c = "" & vbNewLine
+    c = c & "Private Sub btnBrowseNew_Click()" & vbNewLine
+    c = c & "    Dim fd As FileDialog" & vbNewLine
+    c = c & "    Set fd = Application.FileDialog(msoFileDialogFilePicker)" & vbNewLine
+    c = c & "    fd.Title = ""Select New Extract File""" & vbNewLine
+    c = c & "    fd.Filters.Clear" & vbNewLine
+    c = c & "    fd.Filters.Add ""Excel Files"", ""*.xlsx;*.xlsm;*.xls""" & vbNewLine
+    c = c & "    fd.AllowMultiSelect = False" & vbNewLine
+    c = c & "    If fd.Show = -1 Then" & vbNewLine
+    c = c & "        Me.Range(""NewExtractPath"").Value = fd.SelectedItems(1)" & vbNewLine
+    c = c & "    End If" & vbNewLine
+    c = c & "End Sub" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "Private Sub btnBrowseOld_Click()" & vbNewLine
+    c = c & "    Dim fd As FileDialog" & vbNewLine
+    c = c & "    Set fd = Application.FileDialog(msoFileDialogFilePicker)" & vbNewLine
+    c = c & "    fd.Title = ""Select Old Tracker File""" & vbNewLine
+    c = c & "    fd.Filters.Clear" & vbNewLine
+    c = c & "    fd.Filters.Add ""Excel Files"", ""*.xlsx;*.xlsm;*.xls""" & vbNewLine
+    c = c & "    fd.AllowMultiSelect = False" & vbNewLine
+    c = c & "    If fd.Show = -1 Then" & vbNewLine
+    c = c & "        Me.Range(""OldTrackerPath"").Value = fd.SelectedItems(1)" & vbNewLine
+    c = c & "    End If" & vbNewLine
+    c = c & "End Sub" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "Private Sub btnDownloadOld_Click()" & vbNewLine
+    c = c & "    Dim oldPath As String" & vbNewLine
+    c = c & "    oldPath = Me.Range(""OldTrackerPath"").Value" & vbNewLine
+    c = c & "    If oldPath = """" Then" & vbNewLine
+    c = c & "        MsgBox ""Please browse and select the old tracker path first."", vbExclamation" & vbNewLine
+    c = c & "        Exit Sub" & vbNewLine
+    c = c & "    End If" & vbNewLine
+    c = c & "    Workbooks.Open oldPath" & vbNewLine
+    c = c & "    MsgBox ""Old tracker opened successfully."", vbInformation" & vbNewLine
+    c = c & "End Sub" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "Private Sub btnImport_Click()" & vbNewLine
+    c = c & "    Dim userName As String" & vbNewLine
+    c = c & "    userName = InputBox(""Enter your name:"", ""Last Performed By"")" & vbNewLine
+    c = c & "    If userName <> """" Then Me.Range(""LastPerformedBy"").Value = userName" & vbNewLine
+    c = c & "    Me.Range(""LastPerformedOn"").Value = Now()" & vbNewLine
+    c = c & "    Call ImportAndClean" & vbNewLine
+    c = c & "    Call HighlightAndFilter" & vbNewLine
+    c = c & "    Call LookupFromOldTracker" & vbNewLine
+    c = c & "    Call SheetOperations" & vbNewLine
+    c = c & "End Sub" & vbNewLine
+    c = c & "" & vbNewLine
+    c = c & "Private Sub btnExport_Click()" & vbNewLine
+    c = c & "    Call ExportTracker" & vbNewLine
+    c = c & "End Sub" & vbNewLine
+
+    mdl.CodeModule.AddFromString c
+End Sub
