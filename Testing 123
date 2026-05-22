@@ -1,22 +1,33 @@
 Sub CopyVisibleToSheet(ws As Worksheet, destWS As Worksheet, lastRow As Long)
-    Dim visRng As Range
-    Dim destRow As Long
     Dim cell As Range
+    Dim destRow As Long
+    Dim copyRng As Range
+    
     On Error Resume Next
-    For Each cell In ws.Range("A7:A" & lastRow).SpecialCells(xlCellTypeVisible)
-        If cell.Value <> "" Or ws.Cells(cell.Row, "D").Value <> "" Then
-            If visRng Is Nothing Then
-                Set visRng = cell.EntireRow
-            Else
-                Set visRng = Union(visRng, cell.EntireRow)
-            End If
+    For Each cell In ws.Range("D7:D" & lastRow).SpecialCells(xlCellTypeVisible)
+        If copyRng Is Nothing Then
+            Set copyRng = cell.EntireRow
+        Else
+            Set copyRng = Union(copyRng, cell.EntireRow)
         End If
     Next cell
     On Error GoTo 0
-    If visRng Is Nothing Then Exit Sub
-    destRow = destWS.Cells(destWS.Rows.Count, "A").End(xlUp).Row + 1
-    visRng.Copy
+    
+    If copyRng Is Nothing Then Exit Sub
+    
+    destRow = destWS.Cells(destWS.Rows.Count, "D").End(xlUp).Row + 1
+    
+    copyRng.Copy
     destWS.Cells(destRow, 1).PasteSpecial Paste:=xlPasteAll
     destWS.Cells(destRow, 1).PasteSpecial Paste:=xlPasteColumnWidths
     Application.CutCopyMode = False
+    
+    ' Copy row heights
+    Dim i As Long
+    For i = 7 To lastRow
+        If Not ws.Rows(i).Hidden Then
+            destWS.Rows(destRow).RowHeight = ws.Rows(i).RowHeight
+            destRow = destRow + 1
+        End If
+    Next i
 End Sub
