@@ -1,130 +1,22 @@
-Sub HighlightAndFilter()
-
-    ' ===== CHANGE YOUR CONDITIONS HERE =====
-    Dim SLA_MIN As Integer: SLA_MIN = 0
-    Dim SLA_MAX As Integer: SLA_MAX = 45
-    Dim YEAR_1 As String: YEAR_1 = "2026"
-    Dim YEAR_2 As String: YEAR_2 = "2027"
-    Dim YEAR_3 As String: YEAR_3 = "2028"
-    Dim COUNTRY_2027 As String: COUNTRY_2027 = "Kingdom of the Netherlands"
-    Dim COUNTRY_2028 As String: COUNTRY_2028 = "Germany"
-    Dim LEGAL_STATUS As String: LEGAL_STATUS = "Individual"
-    ' =======================================
-
-    Dim ws As Worksheet
-    Set ws = ThisWorkbook.Sheets("Working")
-    Dim lastRow As Long
-    lastRow = ws.Cells(ws.Rows.Count, "D").End(xlUp).Row
-
-    ' Remove any existing filters
-    If ws.AutoFilterMode Then ws.AutoFilterMode = False
-    ws.Rows(6).AutoFilter
-
-    ' Clear column D fills - genuine No Fill
-    ws.Range("D7:D" & lastRow).Interior.Pattern = xlNone
-
-    ' STEP 1: Filter column A - SLA between 0 and 45 - highlight D Blue
-    ws.Range("A6").AutoFilter Field:=1, _
-        Criteria1:=">=" & SLA_MIN, _
-        Operator:=xlAnd, _
-        Criteria2:="<=" & SLA_MAX
-
+Sub CopyVisibleToSheet(ws As Worksheet, destWS As Worksheet, lastRow As Long)
+    Dim visRng As Range
+    Dim destRow As Long
     Dim cell As Range
-    For Each cell In ws.Range("D7:D" & lastRow).SpecialCells(xlCellTypeVisible)
-        cell.Interior.Color = RGB(189, 215, 238)
-    Next cell
-
-    ' Remove filter
-    If ws.AutoFilterMode Then ws.AutoFilterMode = False
-    ws.Rows(6).AutoFilter
-
-    ' STEP 2: Hide blue rows - show only No Fill rows
-    Dim i As Long
-    For i = 7 To lastRow
-        If ws.Cells(i, "D").Interior.Color = RGB(189, 215, 238) Then
-            ws.Rows(i).Hidden = True
-        End If
-    Next i
-
-    ' STEP 3: Convert AD (Prescription Date) from text to date
-    ws.Range("AD7:AD" & lastRow).TextToColumns _
-        Destination:=ws.Range("AD7"), _
-        DataType:=xlDelimited, _
-        TextQualifier:=xlDoubleQuote, _
-        ConsecutiveDelimiter:=False, _
-        Tab:=False, Semicolon:=False, Comma:=False, _
-        Space:=False, Other:=False, _
-        FieldInfo:=Array(1, xlDMYFormat), _
-        TrailingMinusNumbers:=True
-
-    ' STEP 4: Filter AD = 2026 - highlight D Olive Green
-    ws.Range("AD6").AutoFilter Field:=30, _
-        Criteria1:="=*" & YEAR_1 & "*"
-
-    For Each cell In ws.Range("D7:D" & lastRow).SpecialCells(xlCellTypeVisible)
-        If cell.Interior.Pattern = xlNone Then
-            cell.Interior.Color = RGB(217, 225, 148)
-        End If
-    Next cell
-    ws.Range("AD6").AutoFilter Field:=30
-
-    ' STEP 5: Filter AD = 2027 + AA = Netherlands + AB = Individual
-    ws.Range("AD6").AutoFilter Field:=30, _
-        Criteria1:="=*" & YEAR_2 & "*"
-    ws.Range("AA6").AutoFilter Field:=27, _
-        Criteria1:="*" & COUNTRY_2027 & "*"
-
-    Dim found As Boolean: found = False
-    For Each cell In ws.Range("AB7:AB" & lastRow).SpecialCells(xlCellTypeVisible)
-        If InStr(1, CStr(cell.Value), LEGAL_STATUS, vbTextCompare) > 0 Then
-            found = True
-            Exit For
-        End If
-    Next cell
-
-    If found Then
-        ws.Range("AB6").AutoFilter Field:=28, _
-            Criteria1:=LEGAL_STATUS
-        For Each cell In ws.Range("D7:D" & lastRow).SpecialCells(xlCellTypeVisible)
-            If cell.Interior.Pattern = xlNone Then
-                cell.Interior.Color = RGB(217, 225, 148)
+    On Error Resume Next
+    For Each cell In ws.Range("A7:A" & lastRow).SpecialCells(xlCellTypeVisible)
+        If cell.Value <> "" Or ws.Cells(cell.Row, "D").Value <> "" Then
+            If visRng Is Nothing Then
+                Set visRng = cell.EntireRow
+            Else
+                Set visRng = Union(visRng, cell.EntireRow)
             End If
-        Next cell
-        ws.Range("AB6").AutoFilter Field:=28
-    End If
-    ws.Range("AA6").AutoFilter Field:=27
-    ws.Range("AD6").AutoFilter Field:=30
-
-    ' STEP 6: Filter AD = 2028 + AA = Germany + AB = Individual
-    ws.Range("AD6").AutoFilter Field:=30, _
-        Criteria1:="=*" & YEAR_3 & "*"
-    ws.Range("AA6").AutoFilter Field:=27, _
-        Criteria1:="*" & COUNTRY_2028 & "*"
-
-    found = False
-    For Each cell In ws.Range("AB7:AB" & lastRow).SpecialCells(xlCellTypeVisible)
-        If InStr(1, CStr(cell.Value), LEGAL_STATUS, vbTextCompare) > 0 Then
-            found = True
-            Exit For
         End If
     Next cell
-
-    If found Then
-        ws.Range("AB6").AutoFilter Field:=28, _
-            Criteria1:=LEGAL_STATUS
-        For Each cell In ws.Range("D7:D" & lastRow).SpecialCells(xlCellTypeVisible)
-            If cell.Interior.Pattern = xlNone Then
-                cell.Interior.Color = RGB(217, 225, 148)
-            End If
-        Next cell
-        ws.Range("AB6").AutoFilter Field:=28
-    End If
-    ws.Range("AA6").AutoFilter Field:=27
-    ws.Range("AD6").AutoFilter Field:=30
-
-    ' Clear all filters and unhide all rows
-    If ws.AutoFilterMode Then ws.AutoFilterMode = False
-    ws.Rows.Hidden = False
-
-    MsgBox "Highlighting complete!", vbInformation
+    On Error GoTo 0
+    If visRng Is Nothing Then Exit Sub
+    destRow = destWS.Cells(destWS.Rows.Count, "A").End(xlUp).Row + 1
+    visRng.Copy
+    destWS.Cells(destRow, 1).PasteSpecial Paste:=xlPasteAll
+    destWS.Cells(destRow, 1).PasteSpecial Paste:=xlPasteColumnWidths
+    Application.CutCopyMode = False
 End Sub
