@@ -1,34 +1,54 @@
 Sub HighlightAndFilter()
+
+    ' ===== CHANGE YOUR CONDITIONS HERE =====
+    Dim SLA_MIN As Integer: SLA_MIN = 0
+    Dim SLA_MAX As Integer: SLA_MAX = 45
+    Dim YEAR_1 As String: YEAR_1 = "2026"
+    Dim YEAR_2 As String: YEAR_2 = "2027"
+    Dim YEAR_3 As String: YEAR_3 = "2028"
+    Dim COUNTRY_2027 As String: COUNTRY_2027 = "Kingdom of the Netherlands"
+    Dim COUNTRY_2028 As String: COUNTRY_2028 = "Germany"
+    Dim LEGAL_STATUS As String: LEGAL_STATUS = "Individual"
+    ' =======================================
+
     Dim ws As Worksheet
     Set ws = ThisWorkbook.Sheets("Working")
     Dim lastRow As Long
     lastRow = ws.Cells(ws.Rows.Count, "D").End(xlUp).Row
 
+    ' Remove any existing filters
     If ws.AutoFilterMode Then ws.AutoFilterMode = False
-    ws.Rows(HEADER_ROW).AutoFilter
+    ws.Rows(6).AutoFilter
 
-    ' Clear all D column fills - genuine No Fill
-    ws.Range("D" & DATA_START_ROW & ":D" & lastRow).Interior.Pattern = xlNone
+    ' Clear column D fills - genuine No Fill
+    ws.Range("D7:D" & lastRow).Interior.Pattern = xlNone
 
-    ' STEP 1: SLA 0-45 filter - highlight D Blue
-    ws.Range("A" & HEADER_ROW).AutoFilter Field:=1, _
-        Criteria1:=">=" & CStr(SLA_MIN), _
+    ' STEP 1: Filter column A - SLA between 0 and 45 - highlight D Blue
+    ws.Range("A6").AutoFilter Field:=1, _
+        Criteria1:=">=" & SLA_MIN, _
         Operator:=xlAnd, _
-        Criteria2:="<=" & CStr(SLA_MAX)
-    Call HighlightVisibleColD(ws, lastRow, RGB(189, 215, 238))
+        Criteria2:="<=" & SLA_MAX
 
+    Dim cell As Range
+    For Each cell In ws.Range("D7:D" & lastRow).SpecialCells(xlCellTypeVisible)
+        cell.Interior.Color = RGB(189, 215, 238)
+    Next cell
+
+    ' Remove filter
     If ws.AutoFilterMode Then ws.AutoFilterMode = False
-    ws.Rows(HEADER_ROW).AutoFilter
+    ws.Rows(6).AutoFilter
 
-    ' STEP 2: Filter D by No Fill
-    ws.Range("D6").AutoFilter Field:=4, _
-        Criteria1:=xlFilterNoFill, _
-        Operator:=xlFilterCellColor
+    ' STEP 2: Hide blue rows - show only No Fill rows
+    Dim i As Long
+    For i = 7 To lastRow
+        If ws.Cells(i, "D").Interior.Color = RGB(189, 215, 238) Then
+            ws.Rows(i).Hidden = True
+        End If
+    Next i
 
     ' STEP 3: Convert AD (Prescription Date) from text to date
-    Dim prescRng As Range
-    Set prescRng = ws.Range("AD" & DATA_START_ROW & ":AD" & lastRow)
-    prescRng.TextToColumns Destination:=ws.Range("AD" & DATA_START_ROW), _
+    ws.Range("AD7:AD" & lastRow).TextToColumns _
+        Destination:=ws.Range("AD7"), _
         DataType:=xlDelimited, _
         TextQualifier:=xlDoubleQuote, _
         ConsecutiveDelimiter:=False, _
@@ -37,80 +57,74 @@ Sub HighlightAndFilter()
         FieldInfo:=Array(1, xlDMYFormat), _
         TrailingMinusNumbers:=True
 
-    ' STEP 4: AD = 2026 - highlight D Olive Green
-    Dim yr1Start As Date, yr1End As Date
-    yr1Start = DateSerial(CInt(YEAR_1), 1, 1)
-    yr1End = DateSerial(CInt(YEAR_1), 12, 31)
-    ws.Range("AD" & HEADER_ROW).AutoFilter _
-        Criteria1:=">=" & CDbl(yr1Start), _
-        Operator:=xlAnd, _
-        Criteria2:="<=" & CDbl(yr1End)
-    Call HighlightVisibleColD(ws, lastRow, RGB(217, 225, 148))
-    ws.Range("AD" & HEADER_ROW).AutoFilter
+    ' STEP 4: Filter AD = 2026 - highlight D Olive Green
+    ws.Range("AD6").AutoFilter Field:=30, _
+        Criteria1:="=*" & YEAR_1 & "*"
 
-    ' STEP 5: AD = 2027 + AA (Fiscal Country) + AB (Legal Status)
-    Dim yr2Start As Date, yr2End As Date
-    yr2Start = DateSerial(CInt(YEAR_2), 1, 1)
-    yr2End = DateSerial(CInt(YEAR_2), 12, 31)
-    ws.Range("AD" & HEADER_ROW).AutoFilter _
-        Criteria1:=">=" & CDbl(yr2Start), _
-        Operator:=xlAnd, _
-        Criteria2:="<=" & CDbl(yr2End)
-    ws.Range("AA" & HEADER_ROW).AutoFilter _
+    For Each cell In ws.Range("D7:D" & lastRow).SpecialCells(xlCellTypeVisible)
+        If cell.Interior.Pattern = xlNone Then
+            cell.Interior.Color = RGB(217, 225, 148)
+        End If
+    Next cell
+    ws.Range("AD6").AutoFilter Field:=30
+
+    ' STEP 5: Filter AD = 2027 + AA = Netherlands + AB = Individual
+    ws.Range("AD6").AutoFilter Field:=30, _
+        Criteria1:="=*" & YEAR_2 & "*"
+    ws.Range("AA6").AutoFilter Field:=27, _
         Criteria1:="*" & COUNTRY_2027 & "*"
-    If CheckIfValueExists(ws, lastRow, 28, LEGAL_STATUS_FILTER) Then
-        ws.Range("AB" & HEADER_ROW).AutoFilter _
-            Criteria1:=LEGAL_STATUS_FILTER
-        Call HighlightVisibleColD(ws, lastRow, RGB(217, 225, 148))
-        ws.Range("AB" & HEADER_ROW).AutoFilter
-    End If
-    ws.Range("AA" & HEADER_ROW).AutoFilter
-    ws.Range("AD" & HEADER_ROW).AutoFilter
 
-    ' STEP 6: AD = 2028 + AA (Fiscal Country) + AB (Legal Status)
-    Dim yr3Start As Date, yr3End As Date
-    yr3Start = DateSerial(CInt(YEAR_3), 1, 1)
-    yr3End = DateSerial(CInt(YEAR_3), 12, 31)
-    ws.Range("AD" & HEADER_ROW).AutoFilter _
-        Criteria1:=">=" & CDbl(yr3Start), _
-        Operator:=xlAnd, _
-        Criteria2:="<=" & CDbl(yr3End)
-    ws.Range("AA" & HEADER_ROW).AutoFilter _
+    Dim found As Boolean: found = False
+    For Each cell In ws.Range("AB7:AB" & lastRow).SpecialCells(xlCellTypeVisible)
+        If InStr(1, CStr(cell.Value), LEGAL_STATUS, vbTextCompare) > 0 Then
+            found = True
+            Exit For
+        End If
+    Next cell
+
+    If found Then
+        ws.Range("AB6").AutoFilter Field:=28, _
+            Criteria1:=LEGAL_STATUS
+        For Each cell In ws.Range("D7:D" & lastRow).SpecialCells(xlCellTypeVisible)
+            If cell.Interior.Pattern = xlNone Then
+                cell.Interior.Color = RGB(217, 225, 148)
+            End If
+        Next cell
+        ws.Range("AB6").AutoFilter Field:=28
+    End If
+    ws.Range("AA6").AutoFilter Field:=27
+    ws.Range("AD6").AutoFilter Field:=30
+
+    ' STEP 6: Filter AD = 2028 + AA = Germany + AB = Individual
+    ws.Range("AD6").AutoFilter Field:=30, _
+        Criteria1:="=*" & YEAR_3 & "*"
+    ws.Range("AA6").AutoFilter Field:=27, _
         Criteria1:="*" & COUNTRY_2028 & "*"
-    If CheckIfValueExists(ws, lastRow, 28, LEGAL_STATUS_FILTER) Then
-        ws.Range("AB" & HEADER_ROW).AutoFilter _
-            Criteria1:=LEGAL_STATUS_FILTER
-        Call HighlightVisibleColD(ws, lastRow, RGB(217, 225, 148))
-        ws.Range("AB" & HEADER_ROW).AutoFilter
-    End If
-    ws.Range("AA" & HEADER_ROW).AutoFilter
-    ws.Range("AD" & HEADER_ROW).AutoFilter
 
-    ' Clear ALL filters
+    found = False
+    For Each cell In ws.Range("AB7:AB" & lastRow).SpecialCells(xlCellTypeVisible)
+        If InStr(1, CStr(cell.Value), LEGAL_STATUS, vbTextCompare) > 0 Then
+            found = True
+            Exit For
+        End If
+    Next cell
+
+    If found Then
+        ws.Range("AB6").AutoFilter Field:=28, _
+            Criteria1:=LEGAL_STATUS
+        For Each cell In ws.Range("D7:D" & lastRow).SpecialCells(xlCellTypeVisible)
+            If cell.Interior.Pattern = xlNone Then
+                cell.Interior.Color = RGB(217, 225, 148)
+            End If
+        Next cell
+        ws.Range("AB6").AutoFilter Field:=28
+    End If
+    ws.Range("AA6").AutoFilter Field:=27
+    ws.Range("AD6").AutoFilter Field:=30
+
+    ' Clear all filters and unhide all rows
     If ws.AutoFilterMode Then ws.AutoFilterMode = False
+    ws.Rows.Hidden = False
+
     MsgBox "Highlighting complete!", vbInformation
 End Sub
-
-Sub HighlightVisibleColD(ws As Worksheet, lastRow As Long, clr As Long)
-    Dim cell As Range
-    On Error Resume Next
-    For Each cell In ws.Range("D" & DATA_START_ROW & ":D" & lastRow).SpecialCells(xlCellTypeVisible)
-        If cell.Interior.Pattern = xlNone Or cell.Interior.Color <> RGB(189, 215, 238) Then
-            cell.Interior.Color = clr
-        End If
-    Next cell
-    On Error GoTo 0
-End Sub
-
-Function CheckIfValueExists(ws As Worksheet, lastRow As Long, colNum As Integer, searchVal As String) As Boolean
-    Dim cell As Range
-    CheckIfValueExists = False
-    On Error Resume Next
-    For Each cell In ws.Range(ws.Cells(DATA_START_ROW, colNum), ws.Cells(lastRow, colNum)).SpecialCells(xlCellTypeVisible)
-        If InStr(1, CStr(cell.Value), searchVal, vbTextCompare) > 0 Then
-            CheckIfValueExists = True
-            Exit Function
-        End If
-    Next cell
-    On Error GoTo 0
-End Function
