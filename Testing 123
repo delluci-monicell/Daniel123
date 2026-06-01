@@ -1,1121 +1,478 @@
-Option Explicit
-
-' ================================================================
-' SWIFT MT MESSAGE PARSER — DOUBLE BUILDER
-' ================================================================
-' HOW TO USE:
-'   1. Open any Excel file
-'   2. Press ALT+F11 → Insert → Module
-'   3. Paste this entire code
-'   4. Press ALT+F8 → Select "BuildSWIFTParserFile" → Run
-'   5. Choose where to save → Done
-'
-' The new file created needs ZERO SWIFT knowledge from the user.
-' They just paste any message → click DECODE → read plain English.
-' ================================================================
-
-Public Sub BuildSWIFTParserFile()
-
-    Dim savePath As String
-    savePath = Application.GetSaveAsFilename( _
-        InitialFileName:="SWIFT_Message_Parser", _
-        FileFilter:="Excel Macro-Enabled Workbook (*.xlsm),*.xlsm", _
-        Title:="Choose where to save your new SWIFT Parser file")
-
-    If savePath = "False" Or Len(savePath) = 0 Then
-        MsgBox "Cancelled.", vbInformation: Exit Sub
-    End If
-
-    Application.ScreenUpdating = False
-    Application.DisplayAlerts = False
-
-    Dim wb As Workbook
-    Set wb = Workbooks.Add
-    Do While wb.Sheets.Count > 1
-        wb.Sheets(wb.Sheets.Count).Delete
-    Loop
-
-    Call MakeCoverSheet(wb)
-    Call MakeParserSheet(wb)
-    Call MakeSamplesSheet(wb)
-
-    On Error Resume Next
-    wb.Sheets("Sheet1").Delete
-    wb.Sheets("Tabelle1").Delete
-    wb.Sheets("Feuil1").Delete
-    On Error GoTo 0
-
-    Dim vbp As Object
-    Set vbp = wb.VBProject
-
-    Dim m1 As Object
-    Set m1 = vbp.VBComponents.Add(1)
-    m1.Name = "SWIFT_Parser"
-    m1.CodeModule.AddFromString BuildParserCode()
-
-    Dim m2 As Object
-    Set m2 = vbp.VBComponents.Add(1)
-    m2.Name = "PDF_Reader"
-    m2.CodeModule.AddFromString BuildPDFCode()
-
-    Call AddButtons(wb)
-
-    wb.SaveAs Filename:=savePath, FileFormat:=xlOpenXMLWorkbookMacroEnabled
-    Application.ScreenUpdating = True
-    Application.DisplayAlerts = True
-
-    MsgBox "DONE! Your SWIFT Parser file has been created." & Chr(13) & Chr(13) & _
-           "Location: " & savePath & Chr(13) & Chr(13) & _
-           "How to use the new file:" & Chr(13) & _
-           "  1. Go to the PARSER sheet" & Chr(13) & _
-           "  2. Paste any SWIFT message in the yellow box" & Chr(13) & _
-           "  3. Click the green  DECODE THIS MESSAGE  button" & Chr(13) & _
-           "  4. Read the full plain-English explanation below" & Chr(13) & Chr(13) & _
-           "No SWIFT knowledge needed at all!", _
-           vbInformation, "Parser Created Successfully"
-    wb.Activate
-End Sub
-
-' ================================================================
-' ADD BUTTONS
-' ================================================================
-Private Sub AddButtons(wb As Workbook)
-    Dim ws As Worksheet
-    For Each ws In wb.Sheets
-        If ws.Name = "PARSER" Then
-            Dim b1 As Object
-            Set b1 = ws.Buttons.Add(ws.Range("B3").Left, ws.Range("B3").Top, 165, 24)
-            b1.Caption = "  DECODE THIS MESSAGE"
-            b1.OnAction = "SWIFT_Parser.DecodeMessage"
-            b1.Characters.Font.Name = "Arial"
-            b1.Characters.Font.Bold = True
-            b1.Characters.Font.Size = 10
-
-            Dim b2 As Object
-            Set b2 = ws.Buttons.Add(ws.Range("B3").Left + 175, ws.Range("B3").Top, 140, 24)
-            b2.Caption = "  IMPORT FROM PDF"
-            b2.OnAction = "PDF_Reader.ImportFromPDF"
-            b2.Characters.Font.Name = "Arial"
-            b2.Characters.Font.Size = 9
-
-            Dim b3 As Object
-            Set b3 = ws.Buttons.Add(ws.Range("B3").Left + 325, ws.Range("B3").Top, 90, 24)
-            b3.Caption = "  CLEAR"
-            b3.OnAction = "SWIFT_Parser.ClearAll"
-            b3.Characters.Font.Name = "Arial"
-            b3.Characters.Font.Size = 9
-            Exit For
-        End If
-    Next ws
-End Sub
-
-' ================================================================
-' BUILD COVER SHEET
-' ================================================================
-Private Sub MakeCoverSheet(wb As Workbook)
-    Dim ws As Worksheet
-    Set ws = wb.Sheets(1)
-    ws.Name = "HOW TO USE"
-    ws.Tab.Color = RGB(13, 27, 42)
-    ws.ShowGridLines = False
-    ws.Columns("A").ColumnWidth = 3
-    ws.Columns("B").ColumnWidth = 18
-    ws.Columns("C").ColumnWidth = 62
-
-    ws.Rows(2).RowHeight = 48
-    ws.Range("B2:C2").Merge
-    With ws.Range("B2")
-        .Value = "SWIFT Message Decoder"
-        .Font.Name = "Arial": .Font.Size = 28: .Font.Bold = True
-        .Font.Color = RGB(255, 255, 255)
-        .Interior.Color = RGB(13, 27, 42)
-        .HorizontalAlignment = xlCenter: .VerticalAlignment = xlCenter
-    End With
-
-    ws.Rows(3).RowHeight = 20
-    ws.Range("B3:C3").Merge
-    With ws.Range("B3")
-        .Value = "You do not need to know anything about SWIFT. Paste the message and click DECODE."
-        .Font.Name = "Arial": .Font.Size = 10: .Font.Italic = True
-        .Font.Color = RGB(255, 255, 255): .Interior.Color = RGB(30, 50, 70)
-        .HorizontalAlignment = xlCenter: .VerticalAlignment = xlCenter
-    End With
-
-    ws.Rows(5).RowHeight = 20
-    ws.Range("B5:C5").Merge
-    With ws.Range("B5")
-        .Value = "HOW TO USE THIS FILE"
-        .Font.Name = "Arial": .Font.Bold = True: .Font.Size = 11
-        .Font.Color = RGB(255, 255, 255): .Interior.Color = RGB(39, 174, 96)
-        .HorizontalAlignment = xlCenter
-    End With
-
-    Dim steps As Variant
-    steps = Array( _
-        Array("STEP 1", "Click the  PARSER  tab at the bottom of this file", RGB(52, 152, 219)), _
-        Array("STEP 2", "Copy your SWIFT message from your email, system or PDF file", RGB(41, 128, 185)), _
-        Array("STEP 3", "Click the large yellow box on the PARSER sheet", RGB(39, 174, 96)), _
-        Array("STEP 4", "Paste your message  (CTRL + V)", RGB(22, 160, 133)), _
-        Array("STEP 5", "Click the green  DECODE THIS MESSAGE  button", RGB(142, 68, 173)), _
-        Array("STEP 6", "Scroll down and read — every field explained in plain English", RGB(230, 126, 34)), _
-        Array("STEP 7", "To decode a new message, click CLEAR and start again", RGB(192, 57, 43)) _
-    )
-
-    Dim r As Integer: r = 6
-    Dim s As Variant
-    For Each s In steps
-        ws.Rows(r).RowHeight = 26
-        With ws.Range("B" & r)
-            .Value = s(0): .Font.Name = "Arial": .Font.Bold = True: .Font.Size = 9
-            .Font.Color = RGB(255, 255, 255): .Interior.Color = s(2)
-            .HorizontalAlignment = xlCenter: .VerticalAlignment = xlCenter
-            .Borders.LineStyle = xlContinuous
-        End With
-        With ws.Range("C" & r)
-            .Value = s(1): .Font.Name = "Arial": .Font.Size = 10
-            .Interior.Color = RGB(245, 247, 250)
-            .HorizontalAlignment = xlLeft: .VerticalAlignment = xlCenter
-            .IndentLevel = 1: .Borders.LineStyle = xlContinuous
-        End With
-        r = r + 1
-    Next s
-
-    r = r + 1
-    ws.Rows(r).RowHeight = 20
-    ws.Range("B" & r & ":C" & r).Merge
-    With ws.Range("B" & r)
-        .Value = "WHAT IS A SWIFT MESSAGE?"
-        .Font.Name = "Arial": .Font.Bold = True: .Font.Size = 11
-        .Font.Color = RGB(255, 255, 255): .Interior.Color = RGB(52, 73, 94)
-        .HorizontalAlignment = xlCenter
-    End With
-    r = r + 1
-    ws.Rows(r).RowHeight = 60
-    ws.Range("B" & r & ":C" & r).Merge
-    With ws.Range("B" & r)
-        .Value = "SWIFT messages are standardised instructions sent between banks worldwide." & Chr(10) & _
-                 "Think of them as structured bank-to-bank emails with a very strict format." & Chr(10) & _
-                 "Each message has a TYPE (e.g. MT103 = payment, MT700 = Letter of Credit) and FIELDS (each tagged with a code like :32A: or :59:)." & Chr(10) & _
-                 "This tool reads any SWIFT message and explains every single part in plain English — no banking knowledge required."
-        .Font.Name = "Arial": .Font.Size = 9
-        .Interior.Color = RGB(236, 240, 241)
-        .HorizontalAlignment = xlLeft: .VerticalAlignment = xlTop
-        .WrapText = True: .IndentLevel = 1
-    End With
-
-    r = r + 2
-    ws.Rows(r).RowHeight = 20
-    ws.Range("B" & r & ":C" & r).Merge
-    With ws.Range("B" & r)
-        .Value = "COMMON SWIFT MESSAGE TYPES"
-        .Font.Name = "Arial": .Font.Bold = True: .Font.Size = 11
-        .Font.Color = RGB(255, 255, 255): .Interior.Color = RGB(52, 73, 94)
-        .HorizontalAlignment = xlCenter
-    End With
-    r = r + 1
-
-    Dim mtypes As Variant
-    mtypes = Array( _
-        Array("MT 103", "A payment from one customer to another — the most common SWIFT message worldwide"), _
-        Array("MT 202", "A bank transferring money to another bank (not a customer payment)"), _
-        Array("MT 700", "A Letter of Credit — a bank guaranteeing payment once goods are shipped"), _
-        Array("MT 760", "A Bank Guarantee or Standby LC — a safety net if someone fails their obligation"), _
-        Array("MT 940", "A full bank account statement — all transactions for a period"), _
-        Array("MT 942", "An intraday statement — transactions that happened today so far"), _
-        Array("MT 300", "Foreign exchange deal confirmation between two banks"), _
-        Array("MT 910", "A bank telling its customer their account has been credited (received funds)"), _
-        Array("MT 900", "A bank telling its customer their account has been debited (funds sent)"), _
-        Array("MT 999", "A free-format text message between banks — no fixed structure") _
-    )
-    Dim mi As Integer
-    For mi = 0 To UBound(mtypes)
-        ws.Rows(r).RowHeight = 22
-        With ws.Range("B" & r)
-            .Value = mtypes(mi)(0): .Font.Name = "Arial": .Font.Bold = True: .Font.Size = 9
-            .Font.Color = RGB(255, 255, 255): .Interior.Color = RGB(13, 27, 42)
-            .HorizontalAlignment = xlCenter: .VerticalAlignment = xlCenter
-            .Borders.LineStyle = xlContinuous
-        End With
-        With ws.Range("C" & r)
-            .Value = mtypes(mi)(1): .Font.Name = "Arial": .Font.Size = 9
-            .Interior.Color = IIf(mi Mod 2 = 0, RGB(214, 234, 248), RGB(245, 247, 250))
-            .HorizontalAlignment = xlLeft: .VerticalAlignment = xlCenter
-            .IndentLevel = 1: .Borders.LineStyle = xlContinuous
-        End With
-        r = r + 1
-    Next mi
-End Sub
-
-' ================================================================
-' BUILD PARSER SHEET
-' ================================================================
-Private Sub MakeParserSheet(wb As Workbook)
-    Dim ws As Worksheet
-    Set ws = wb.Sheets.Add(After:=wb.Sheets(wb.Sheets.Count))
-    ws.Name = "PARSER"
-    ws.Tab.Color = RGB(39, 174, 96)
-    ws.ShowGridLines = False
-    ws.Columns("A").ColumnWidth = 2
-    ws.Columns("B").ColumnWidth = 18
-    ws.Columns("C").ColumnWidth = 28
-    ws.Columns("D").ColumnWidth = 32
-    ws.Columns("E").ColumnWidth = 58
-    ws.Columns("F").ColumnWidth = 2
-
-    ws.Rows(1).RowHeight = 6
-    ws.Rows(2).RowHeight = 38
-    ws.Range("B2:E2").Merge
-    With ws.Range("B2")
-        .Value = "  SWIFT Message Decoder  —  Paste your message below and click DECODE"
-        .Font.Name = "Arial": .Font.Size = 15: .Font.Bold = True
-        .Font.Color = RGB(255, 255, 255): .Interior.Color = RGB(13, 27, 42)
-        .HorizontalAlignment = xlLeft: .VerticalAlignment = xlCenter
-    End With
-
-    ws.Rows(3).RowHeight = 30
-    ws.Rows(4).RowHeight = 18
-    ws.Range("B4:E4").Merge
-    With ws.Range("B4")
-        .Value = "  PASTE YOUR COMPLETE SWIFT MESSAGE IN THE YELLOW BOX BELOW:"
-        .Font.Name = "Arial": .Font.Size = 9: .Font.Bold = True
-        .Font.Color = RGB(255, 255, 255): .Interior.Color = RGB(52, 73, 94)
-    End With
-
-    ws.Rows(5).RowHeight = 110
-    ws.Range("B5:E5").Merge
-    With ws.Range("B5")
-        .Value = "  Paste your complete SWIFT message here." & Chr(10) & _
-                 "  It can start with {1:   or directly with a field tag like :20:" & Chr(10) & _
-                 "  Include the entire message — do not remove any lines." & Chr(10) & _
-                 "  Then click the green DECODE THIS MESSAGE button above."
-        .Font.Name = "Arial": .Font.Size = 10: .Font.Color = RGB(160, 160, 160)
-        .Interior.Color = RGB(255, 253, 210)
-        .HorizontalAlignment = xlLeft: .VerticalAlignment = xlTop
-        .WrapText = True: .IndentLevel = 1
-        .Borders.LineStyle = xlContinuous
-        .Borders.Weight = xlMedium
-        .Borders.Color = RGB(245, 166, 35)
-    End With
-
-    ws.Rows(6).RowHeight = 6
-    ws.Rows(7).RowHeight = 22
-
-    Dim hc As Variant: hc = Array("B", "C", "D", "E")
-    Dim ht As Variant: ht = Array("SECTION", "FIELD CODE", "WHAT THIS FIELD IS", "WHAT IT MEANS  (PLAIN ENGLISH — no jargon)")
-    Dim hi As Integer
-    For hi = 0 To 3
-        With ws.Range(hc(hi) & "7")
-            .Value = ht(hi): .Font.Name = "Arial": .Font.Bold = True: .Font.Size = 9
-            .Font.Color = RGB(255, 255, 255): .Interior.Color = RGB(13, 27, 42)
-            .HorizontalAlignment = xlCenter: .VerticalAlignment = xlCenter
-            .Borders.LineStyle = xlContinuous
-        End With
-    Next hi
-
-    Dim rw As Long, col As Variant
-    For rw = 8 To 200
-        ws.Rows(rw).RowHeight = 18
-        Dim bg As Long: bg = IIf(rw Mod 2 = 0, RGB(245, 247, 250), RGB(255, 255, 255))
-        For Each col In hc
-            With ws.Range(col & rw)
-                .Interior.Color = bg: .Font.Name = "Arial": .Font.Size = 9
-                .WrapText = True: .VerticalAlignment = xlCenter
-                .Borders.LineStyle = xlContinuous: .Borders.Color = RGB(220, 220, 220)
-            End With
-        Next col
-    Next rw
-
-    ws.Rows(201).RowHeight = 20
-    ws.Range("B201:E201").Merge
-    With ws.Range("B201")
-        .Value = "  Ready — paste a SWIFT message above and click  DECODE THIS MESSAGE"
-        .Font.Name = "Arial": .Font.Size = 9: .Font.Italic = True
-        .Interior.Color = RGB(213, 245, 227): .IndentLevel = 1
-    End With
-
-    ws.Rows(202).RowHeight = 16
-    ws.Range("B202:E202").Merge
-    With ws.Range("B202")
-        .Font.Name = "Arial": .Font.Size = 8: .Font.Color = RGB(41, 128, 185)
-        .Interior.Color = RGB(214, 234, 248)
-    End With
-End Sub
-
-' ================================================================
-' BUILD SAMPLES SHEET
-' ================================================================
-Private Sub MakeSamplesSheet(wb As Workbook)
-    Dim ws As Worksheet
-    Set ws = wb.Sheets.Add(After:=wb.Sheets(wb.Sheets.Count))
-    ws.Name = "SAMPLE MESSAGES"
-    ws.Tab.Color = RGB(142, 68, 173)
-    ws.ShowGridLines = False
-    ws.Columns("A").ColumnWidth = 2
-    ws.Columns("B").ColumnWidth = 85
-
-    ws.Rows(1).RowHeight = 22
-    With ws.Range("B1")
-        .Value = "  SAMPLE MESSAGES — Copy any sample below and paste into the PARSER yellow box, then click DECODE"
-        .Font.Name = "Arial": .Font.Bold = True: .Font.Size = 10
-        .Font.Color = RGB(255, 255, 255): .Interior.Color = RGB(13, 27, 42)
-    End With
-
-    Dim samples As Variant
-    samples = Array( _
-        Array("SAMPLE 1 — MT103  Customer Payment (most common SWIFT message)", _
-              "{1:F01BANKBEBBAXXX0000000000}" & Chr(10) & _
-              "{2:I103BANKDEFFXXXXU3}" & Chr(10) & _
-              "{3:{108:REF20240115001}{121:eb6305c9-1bed-462f-bc68-a6c3cde6f25d}}" & Chr(10) & _
-              "{4:" & Chr(10) & _
-              ":20:TXN20240115001" & Chr(10) & _
-              ":23B:CRED" & Chr(10) & _
-              ":32A:240115EUR15000,00" & Chr(10) & _
-              ":50K:/BE71096123456769" & Chr(10) & _
-              "ACME CORPORATION" & Chr(10) & _
-              "RUE DE LA LOI 56" & Chr(10) & _
-              "1000 BRUSSELS BELGIUM" & Chr(10) & _
-              ":57A:DEUTDEFFXXX" & Chr(10) & _
-              ":59:/DE89370400440532013000" & Chr(10) & _
-              "HANS MUELLER GMBH" & Chr(10) & _
-              "HAUPTSTRASSE 100, 10115 BERLIN" & Chr(10) & _
-              ":70:/INV/INV-2024-0042" & Chr(10) & _
-              ":71A:SHA" & Chr(10) & _
-              "-}" & Chr(10) & _
-              "{5:{CHK:ABCD12345678}}"), _
-        Array("SAMPLE 2 — MT940  Bank Account Statement", _
-              "{1:F01BANKBEBBAXXX0000000000}" & Chr(10) & _
-              "{2:I940CORPBE22XXXXU3}" & Chr(10) & _
-              "{4:" & Chr(10) & _
-              ":20:STMT20240115001" & Chr(10) & _
-              ":25:BE71096123456769" & Chr(10) & _
-              ":28C:00001/001" & Chr(10) & _
-              ":60F:C240114EUR25000,00" & Chr(10) & _
-              ":61:2401150115CD15000,00NTRFNONREF//TXN20240115001" & Chr(10) & _
-              ":86:INCOMING WIRE FROM ACME CORP RE INV-2024-0042" & Chr(10) & _
-              ":62F:C240115EUR40000,00" & Chr(10) & _
-              ":64:C240115EUR40000,00" & Chr(10) & _
-              "-}"), _
-        Array("SAMPLE 3 — MT700  Letter of Credit", _
-              "{1:F01BANKBEBBAXXX0000000000}" & Chr(10) & _
-              "{2:I700BANKGB2LXXXXU3}" & Chr(10) & _
-              "{4:" & Chr(10) & _
-              ":27:1/1" & Chr(10) & _
-              ":40A:IRREVOCABLE" & Chr(10) & _
-              ":20:LC20240115004" & Chr(10) & _
-              ":31C:240115" & Chr(10) & _
-              ":40E:UCP LATEST VERSION" & Chr(10) & _
-              ":31D:240415UNITED KINGDOM" & Chr(10) & _
-              ":50:ACME CORPORATION, BRUSSELS" & Chr(10) & _
-              ":59:BRITISH EXPORTS LTD, LONDON" & Chr(10) & _
-              ":32B:EUR50000,00" & Chr(10) & _
-              ":41A:BANKGB2LXXXXU BY NEGOTIATION" & Chr(10) & _
-              ":42C:SIGHT" & Chr(10) & _
-              ":43P:NOT ALLOWED" & Chr(10) & _
-              ":43T:NOT ALLOWED" & Chr(10) & _
-              ":44C:240315" & Chr(10) & _
-              ":44E:PORT OF ANTWERP" & Chr(10) & _
-              ":44F:PORT OF FELIXSTOWE" & Chr(10) & _
-              ":45A:INDUSTRIAL MACHINERY PER PROFORMA INVOICE PI-2024-001" & Chr(10) & _
-              ":46A:SIGNED COMMERCIAL INVOICE IN TRIPLICATE" & Chr(10) & _
-              "FULL SET CLEAN ON BOARD BILLS OF LADING" & Chr(10) & _
-              ":48:21" & Chr(10) & _
-              ":49:CONFIRM" & Chr(10) & _
-              "-}"), _
-        Array("SAMPLE 4 — MT760  Bank Guarantee", _
-              "{1:F01BANKBEBBAXXX0000000000}" & Chr(10) & _
-              "{2:I760BANKGB2LXXXXU3}" & Chr(10) & _
-              "{4:" & Chr(10) & _
-              ":20:GTY20240115005" & Chr(10) & _
-              ":22A:ISSU" & Chr(10) & _
-              ":23:PERFORMANCE GUARANTEE" & Chr(10) & _
-              ":30:240115" & Chr(10) & _
-              ":22D:PERF" & Chr(10) & _
-              ":40C:URDG" & Chr(10) & _
-              ":32B:EUR25000,00" & Chr(10) & _
-              ":50:ACME CORPORATION BRUSSELS" & Chr(10) & _
-              ":59:BRITISH EXPORTS LTD LONDON" & Chr(10) & _
-              ":77C:WE BANK OF BRUSSELS HEREBY IRREVOCABLY GUARANTEE TO PAY" & Chr(10) & _
-              "UP TO EUR 25000,00 ON BEHALF OF ACME CORPORATION" & Chr(10) & _
-              "IF THEY FAIL TO PERFORM UNDER CONTRACT REF CONT-2024-001" & Chr(10) & _
-              "THIS GUARANTEE IS VALID UNTIL 15 APRIL 2025" & Chr(10) & _
-              "-}") _
-    )
-
-    Dim rr As Long: rr = 2
-    Dim si As Integer
-    For si = 0 To UBound(samples)
-        ws.Rows(rr).RowHeight = 22
-        With ws.Range("B" & rr)
-            .Value = "  " & samples(si)(0)
-            .Font.Name = "Arial": .Font.Bold = True: .Font.Size = 10
-            .Font.Color = RGB(255, 255, 255): .Interior.Color = RGB(27, 40, 56)
-            .Borders.LineStyle = xlContinuous
-        End With
-        rr = rr + 1
-        Dim msgLines() As String: msgLines = Split(samples(si)(1), Chr(10))
-        Dim ml As Variant
-        For Each ml In msgLines
-            ws.Rows(rr).RowHeight = 14
-            Dim ln As String: ln = CStr(ml)
-            Dim isTag As Boolean
-            isTag = (Left(Trim(ln), 1) = ":" And InStr(Mid(Trim(ln), 2), ":") > 0)
-            With ws.Range("B" & rr)
-                .Value = ln: .Font.Name = "Courier New": .Font.Size = 9
-                .Font.Color = IIf(isTag, RGB(41, 128, 185), RGB(13, 27, 42))
-                .Interior.Color = IIf(Left(Trim(ln), 1) = "{", RGB(232, 218, 241), IIf(isTag, RGB(255, 252, 220), RGB(248, 249, 250)))
-                .Borders.LineStyle = xlContinuous: .Borders.Color = RGB(220, 220, 220)
-            End With
-            rr = rr + 1
-        Next ml
-        ws.Rows(rr).RowHeight = 8
-        rr = rr + 2
-    Next si
-End Sub
-
-' ================================================================
-' PARSER ENGINE CODE — returned as string, injected into new file
-' ================================================================
-Private Function BuildParserCode() As String
-    Dim L As String: L = Chr(10)
-    Dim c As String
-
-    c = "Option Explicit" & L
-    c = c & "Dim outRow As Long" & L & L
-
-    c = c & "Public Sub DecodeMessage()" & L
-    c = c & "    Dim ws As Worksheet" & L
-    c = c & "    For Each ws In ThisWorkbook.Sheets" & L
-    c = c & "        If ws.Name = ""PARSER"" Then Exit For" & L
-    c = c & "    Next ws" & L
-    c = c & "    Dim raw As String: raw = Trim(ws.Range(""B5"").Value)" & L
-    c = c & "    If Len(raw) = 0 Or InStr(LCase(raw), ""paste"") > 0 Then" & L
-    c = c & "        MsgBox ""Please paste a SWIFT message in the yellow box first."", vbExclamation: Exit Sub" & L
-    c = c & "    End If" & L
-    c = c & "    Application.ScreenUpdating = False" & L
-    c = c & "    Call ClearResults(ws)" & L
-    c = c & "    outRow = 8" & L
-    c = c & "    ws.Range(""B201"").Value = ""  Reading your message..."": DoEvents" & L
-    c = c & "    Dim msg As String" & L
-    c = c & "    msg = Replace(Replace(raw, Chr(13) & Chr(10), Chr(10)), Chr(13), Chr(10))" & L
-    c = c & "    Call ParseAll(ws, msg)" & L
-    c = c & "    ws.Rows(""8:200"").AutoFit" & L
-    c = c & "    ws.Range(""B201"").Value = ""  Done! "" & (outRow-8) & "" fields decoded. Scroll down to read every field explained in plain English.""" & L
-    c = c & "    ws.Range(""B201"").Interior.Color = RGB(213,245,227)" & L
-    c = c & "    ws.Range(""B8"").Select" & L
-    c = c & "    Application.ScreenUpdating = True" & L
-    c = c & "End Sub" & L & L
-
-    c = c & "Public Sub ClearAll()" & L
-    c = c & "    Dim ws As Worksheet" & L
-    c = c & "    For Each ws In ThisWorkbook.Sheets" & L
-    c = c & "        If ws.Name = ""PARSER"" Then" & L
-    c = c & "            ws.Range(""B5"").Value = ""  Paste your complete SWIFT message here."" & Chr(10) & ""  Then click the green DECODE button above.""" & L
-    c = c & "            ws.Range(""B5"").Font.Color = RGB(160,160,160)" & L
-    c = c & "            Call ClearResults(ws)" & L
-    c = c & "            ws.Range(""B201"").Value = ""  Ready — paste a message and click DECODE THIS MESSAGE""" & L
-    c = c & "            ws.Range(""B201"").Interior.Color = RGB(213,245,227)" & L
-    c = c & "            ws.Range(""B202"").Value = """": Exit Sub" & L
-    c = c & "        End If" & L
-    c = c & "    Next ws" & L
-    c = c & "End Sub" & L & L
-
-    c = c & "Private Sub ClearResults(ws As Worksheet)" & L
-    c = c & "    Dim r As Long" & L
-    c = c & "    For r = 8 To 200" & L
-    c = c & "        ws.Range(""B"" & r).ClearContents" & L
-    c = c & "        ws.Range(""C"" & r).ClearContents" & L
-    c = c & "        ws.Range(""D"" & r).ClearContents" & L
-    c = c & "        ws.Range(""E"" & r).ClearContents" & L
-    c = c & "    Next r" & L
-    c = c & "End Sub" & L & L
-
-    c = c & "Private Sub WR(ws As Worksheet, sec As String, code As String, fname As String, meaning As String)" & L
-    c = c & "    If outRow > 200 Then Exit Sub" & L
-    c = c & "    Dim bg As Long" & L
-    c = c & "    Select Case sec" & L
-    c = c & "        Case ""ENVELOPE"":       bg = RGB(232,218,241)" & L
-    c = c & "        Case ""MESSAGE TYPE"":   bg = RGB(189,236,182)" & L
-    c = c & "        Case ""TRACKING"":       bg = RGB(255,248,220)" & L
-    c = c & "        Case ""PAYER"":          bg = RGB(214,234,248)" & L
-    c = c & "        Case ""PAYEE"":          bg = RGB(213,245,227)" & L
-    c = c & "        Case ""AMOUNT"":         bg = RGB(250,229,211)" & L
-    c = c & "        Case ""BANKS"":          bg = RGB(235,222,240)" & L
-    c = c & "        Case ""PAYMENT INFO"":   bg = RGB(254,249,231)" & L
-    c = c & "        Case ""LC / GUARANTEE"": bg = RGB(253,235,208)" & L
-    c = c & "        Case ""STATEMENT"":      bg = RGB(232,248,245)" & L
-    c = c & "        Case ""FX / MM"":        bg = RGB(232,245,253)" & L
-    c = c & "        Case ""WARNING"":        bg = RGB(255,200,200)" & L
-    c = c & "        Case Else:              bg = IIf(outRow Mod 2=0,RGB(245,247,250),RGB(255,255,255))" & L
-    c = c & "    End Select" & L
-    c = c & "    With ws.Range(""B"" & outRow)" & L
-    c = c & "        .Value = sec: .Font.Name = ""Arial"": .Font.Bold = True: .Font.Size = 8" & L
-    c = c & "        .Interior.Color = bg: .HorizontalAlignment = xlCenter: .WrapText = True: .VerticalAlignment = xlCenter" & L
-    c = c & "    End With" & L
-    c = c & "    With ws.Range(""C"" & outRow)" & L
-    c = c & "        .Value = code: .Font.Name = ""Courier New"": .Font.Size = 9: .Font.Bold = True" & L
-    c = c & "        .Font.Color = RGB(41,128,185): .Interior.Color = bg: .WrapText = True: .VerticalAlignment = xlCenter" & L
-    c = c & "    End With" & L
-    c = c & "    With ws.Range(""D"" & outRow)" & L
-    c = c & "        .Value = fname: .Font.Name = ""Arial"": .Font.Size = 9: .Font.Bold = True" & L
-    c = c & "        .Interior.Color = bg: .WrapText = True: .VerticalAlignment = xlCenter" & L
-    c = c & "    End With" & L
-    c = c & "    With ws.Range(""E"" & outRow)" & L
-    c = c & "        .Value = meaning: .Font.Name = ""Arial"": .Font.Size = 9" & L
-    c = c & "        .Interior.Color = bg: .WrapText = True: .VerticalAlignment = xlTop" & L
-    c = c & "    End With" & L
-    c = c & "    ws.Rows(outRow).RowHeight = 18: outRow = outRow + 1" & L
-    c = c & "End Sub" & L & L
-
-    c = c & "Private Sub WD(ws As Worksheet, title As String, col As Long)" & L
-    c = c & "    If outRow > 200 Then Exit Sub" & L
-    c = c & "    ws.Rows(outRow).RowHeight = 20" & L
-    c = c & "    ws.Range(""B"" & outRow & "":E"" & outRow).Merge" & L
-    c = c & "    With ws.Range(""B"" & outRow)" & L
-    c = c & "        .Value = ""  "" & title: .Font.Name = ""Arial"": .Font.Bold = True: .Font.Size = 10" & L
-    c = c & "        .Font.Color = RGB(255,255,255): .Interior.Color = col" & L
-    c = c & "        .HorizontalAlignment = xlLeft: .VerticalAlignment = xlCenter" & L
-    c = c & "    End With" & L
-    c = c & "    outRow = outRow + 1" & L
-    c = c & "End Sub" & L & L
-
-    c = c & "Private Sub ParseAll(ws As Worksheet, msg As String)" & L
-    c = c & "    Dim b1 As String, b2 As String, b3 As String, b4 As String, b5 As String, mt As String" & L
-    c = c & "    b1=GB(msg,""{1:""): b2=GB(msg,""{2:""): b3=GB(msg,""{3:""): b4=GB(msg,""{4:""): b5=GB(msg,""{5:"")" & L
-    c = c & "    mt = """" " & L
-    c = c & "    If Len(b1)>0 Or Len(b2)>0 Then" & L
-    c = c & "        Call WD(ws,""ENVELOPE  —  The outer wrapper of the SWIFT message (like an envelope around a letter)"",RGB(52,73,94))" & L
-    c = c & "        If Len(b1)>0 Then Call RB1(ws,b1)" & L
-    c = c & "        If Len(b2)>0 Then mt = RB2(ws,b2)" & L
-    c = c & "        If Len(b3)>0 Then Call RB3(ws,b3)" & L
-    c = c & "    End If" & L
-    c = c & "    If Len(b4)>0 Then" & L
-    c = c & "        Call WD(ws,""MESSAGE CONTENT  —  The actual data fields inside this SWIFT message"",RGB(27,94,32))" & L
-    c = c & "        Call RB4(ws,b4,mt)" & L
-    c = c & "    ElseIf InStr(msg,"":20:"")>0 Or InStr(msg,"":32A:"")>0 Or InStr(msg,"":40A:"")>0 Or InStr(msg,"":60F:"")>0 Then" & L
-    c = c & "        Call WD(ws,""MESSAGE CONTENT  —  Fields detected directly (no block wrapper found)"",RGB(27,94,32))" & L
-    c = c & "        Call RB4(ws,msg,""Unknown"")" & L
-    c = c & "    End If" & L
-    c = c & "    If Len(b5)>0 Then" & L
-    c = c & "        Call WD(ws,""SECURITY TRAILER  —  Authentication and integrity checks on this message"",RGB(115,48,24))" & L
-    c = c & "        Call RB5(ws,b5)" & L
-    c = c & "    End If" & L
-    c = c & "End Sub" & L & L
-
-    c = c & "Private Function GB(msg As String, tag As String) As String" & L
-    c = c & "    Dim sp As Long, depth As Integer, i As Long, ch As String" & L
-    c = c & "    sp=InStr(msg,tag): If sp=0 Then GB="""": Exit Function" & L
-    c = c & "    sp=sp+Len(tag): depth=1" & L
-    c = c & "    For i=sp To Len(msg): ch=Mid(msg,i,1)" & L
-    c = c & "        If ch=""{"" Then depth=depth+1" & L
-    c = c & "        If ch=""}"" Then: depth=depth-1: If depth=0 Then GB=Mid(msg,sp,i-sp): Exit Function: End If" & L
-    c = c & "    Next i: GB=Mid(msg,sp)" & L
-    c = c & "End Function" & L & L
-
-    c = c & "Private Sub RB1(ws As Worksheet, b As String)" & L
-    c = c & "    Dim app As String: app=Left(b,1): Dim svc As String: svc=Mid(b,2,2)" & L
-    c = c & "    Dim lt As String: lt=Mid(b,4,12): Dim ses As String: ses=Mid(b,16,4): Dim seq As String: seq=Mid(b,20,6)" & L
-    c = c & "    WR ws,""ENVELOPE"",""Block 1"",""Application Identifier"",""This tells us which SWIFT network system handled this message. Value: "" & app & "" = "" & IIf(app=""F"",""FIN (the live production SWIFT network — real transactions)"",IIf(app=""A"",""GPA (administration messages)"",""Unknown""))" & L
-    c = c & "    WR ws,""ENVELOPE"",""Block 1"",""Service Identifier"",""Which SWIFT service is being used. "" & svc & "" = "" & IIf(svc=""01"",""FIN — the financial messaging service (payments, LCs, statements etc.)"",""Service "" & svc)" & L
-    c = c & "    WR ws,""ENVELOPE"",""Block 1"",""Sender Bank Address (BIC)"",""The unique address of the BANK THAT SENT this message."" & Chr(10) & ""Address: "" & lt & Chr(10) & ""A BIC (Bank Identifier Code) works like a bank's postal address: first 4 letters = bank name code, next 2 = country code, next 2 = city code, last 3 = branch code.""" & L
-    c = c & "    WR ws,""ENVELOPE"",""Block 1"",""Session Number"",""The SWIFT communication session during which this message was sent. Value: "" & ses" & L
-    c = c & "    WR ws,""ENVELOPE"",""Block 1"",""Sequence Number"",""The order number of this message within the session. Used by SWIFT to ensure no messages are lost or duplicated. Value: "" & seq" & L
-    c = c & "End Sub" & L & L
-
-    c = c & "Private Function RB2(ws As Worksheet, b As String) As String" & L
-    c = c & "    Dim io As String: io=Left(b,1): Dim mt As String: mt=Mid(b,2,3): Dim rcv As String: rcv=Mid(b,5,12)" & L
-    c = c & "    Dim pri As String: pri=IIf(Len(b)>16,Right(b,1),""N"")" & L
-    c = c & "    WR ws,""MESSAGE TYPE"",""Block 2"",""Message Direction"",""Direction: "" & io & "" = "" & IIf(io=""I"",""INPUT — this message was SENT (composed and sent by the sending bank)"",""OUTPUT — this message was RECEIVED by the processing system"")" & L
-    c = c & "    WR ws,""MESSAGE TYPE"",""MT "" & mt,""Message Type — What Kind of Message This Is"",EMT(mt)" & L
-    c = c & "    WR ws,""MESSAGE TYPE"",""Block 2"",""Receiving Bank (Destination)"",""The bank that RECEIVED this message."" & Chr(10) & ""BIC Address: "" & rcv & Chr(10) & ""Reading the BIC: first 4 = bank code, next 2 = country, next 2 = city, last 3 = branch.""" & L
-    c = c & "    WR ws,""MESSAGE TYPE"",""Block 2"",""Priority"",""How urgent this message is: "" & pri & "" = "" & IIf(pri=""U"",""URGENT — must be processed immediately, ahead of all normal messages"",IIf(pri=""S"",""SYSTEM — generated by SWIFT infrastructure"",""NORMAL — processed in standard order""))" & L
-    c = c & "    RB2=mt" & L
-    c = c & "End Function" & L & L
-
-    c = c & "Private Sub RB3(ws As Worksheet, b As String)" & L
-    c = c & "    Dim parts() As String: parts=Split(b,""}{""):  Dim p As Variant" & L
-    c = c & "    For Each p In parts" & L
-    c = c & "        Dim ps As String: ps=Replace(Replace(CStr(p),""{"""",""""),""}"","""")" & L
-    c = c & "        Dim cp As Integer: cp=InStr(ps,"":""):  If cp=0 Then GoTo NP" & L
-    c = c & "        Dim t As String: t=Left(ps,cp-1): Dim v As String: v=Mid(ps,cp+1)" & L
-    c = c & "        Select Case t" & L
-    c = c & "            Case ""108"": WR ws,""TRACKING"",""108"",""Message User Reference (MUR)"",""A unique reference number the SENDING BANK assigned to this specific message. Think of it like a tracking number for the message itself."" & Chr(10) & ""Reference: "" & v" & L
-    c = c & "            Case ""121"": WR ws,""TRACKING"",""121"",""UETR — Global Payment Tracking ID"",""This is a GLOBALLY UNIQUE tracking number (like a parcel tracking number) that follows this payment through EVERY bank in the entire chain from start to finish."" & Chr(10) & ""It is used by SWIFT gpi (global payments innovation) so banks and customers can track payments in real time."" & Chr(10) & ""Tracking ID: "" & v" & L
-    c = c & "            Case ""119"": WR ws,""TRACKING"",""119"",""Processing Flag"",EF(v)" & L
-    c = c & "            Case ""111"": WR ws,""TRACKING"",""111"",""Priority Level"",""Priority code: "" & v & "" = "" & IIf(v=""001"",""URGENT — top priority, process immediately"",IIf(v=""002"",""NORMAL priority"",""Priority: "" & v))" & L
-    c = c & "            Case ""433"": WR ws,""TRACKING"",""433"",""Sanctions Screening"",""This message has passed through sanctions/compliance screening. Result: "" & v" & L
-    c = c & "            Case Else: WR ws,""TRACKING"",t,""Header Sub-Field"",""Value: "" & v" & L
-    c = c & "        End Select" & L
-    c = c & "        NP:" & L
-    c = c & "    Next p" & L
-    c = c & "End Sub" & L & L
-
-    c = c & "Private Sub RB4(ws As Worksheet, b As String, mt As String)" & L
-    c = c & "    Dim lines() As String: lines=Split(b,Chr(10)): Dim i As Long" & L
-    c = c & "    Dim cT As String: cT="""": Dim cV As String: cV="""": Dim te As Integer" & L
-    c = c & "    For i=0 To UBound(lines): Dim ln As String: ln=Trim(lines(i))" & L
-    c = c & "        If ln=""-"" Or ln="""" Then" & L
-    c = c & "            If Len(cT)>0 Then Call EF2(ws,mt,cT,Trim(cV)): cT="""": cV=""""" & L
-    c = c & "        ElseIf Left(ln,1)="":"" And InStr(Mid(ln,2),"":"")>0 Then" & L
-    c = c & "            If Len(cT)>0 Then Call EF2(ws,mt,cT,Trim(cV))" & L
-    c = c & "            te=InStr(2,ln,"":""):  cT=Mid(ln,2,te-2): cV=Mid(ln,te+1)" & L
-    c = c & "        Else: If Len(cT)>0 Then cV=cV&Chr(10)&ln" & L
-    c = c & "        End If" & L
-    c = c & "    Next i" & L
-    c = c & "    If Len(cT)>0 Then Call EF2(ws,mt,cT,Trim(cV))" & L
-    c = c & "End Sub" & L & L
-
-    c = c & "Private Sub RB5(ws As Worksheet, b As String)" & L
-    c = c & "    If InStr(b,""MAC:"")>0 Then WR ws,""ENVELOPE"",""MAC"",""Message Authentication Code"",""A cryptographic security code that PROVES this message was not altered during transmission. Banks use this to verify the message is genuine and has not been tampered with."" & Chr(10) & ""Value: "" & GTV(b,""MAC"")" & L
-    c = c & "    If InStr(b,""CHK:"")>0 Then WR ws,""ENVELOPE"",""CHK"",""Checksum"",""A mathematical check value calculated from the entire message. If even a single character was changed in transit, this checksum would be wrong and the message would be automatically rejected."" & Chr(10) & ""Value: "" & GTV(b,""CHK"")" & L
-    c = c & "    If InStr(b,""TNG"")>0 Then WR ws,""WARNING"",""TNG"",""!!! TEST MESSAGE WARNING !!!"",""THIS IS A TEST MESSAGE. It was sent in training or test mode and does NOT represent a real transaction."" & Chr(10) & ""DO NOT process any payment, LC or guarantee based on this message. It is for testing purposes only.""" & L
-    c = c & "    If InStr(b,""PDM:"")>0 Then WR ws,""WARNING"",""PDM"",""!!! POSSIBLE DUPLICATE WARNING !!!"",""SWIFT has flagged this as a POSSIBLE DUPLICATE. A very similar message may have already been sent and processed."" & Chr(10) & ""DO NOT process this until you confirm with the sending bank whether this is genuinely new or a duplicate."" & Chr(10) & ""Processing a duplicate could result in a DOUBLE PAYMENT or DOUBLE ISSUANCE."" & Chr(10) & ""Ref: "" & GTV(b,""PDM"")" & L
-    c = c & "    If InStr(b,""PDE:"")>0 Then WR ws,""WARNING"",""PDE"",""!!! Possible Duplicate Emission !!!"",""The sending bank may have transmitted this message more than once. Contact the sender to confirm before taking any action.""" & L
-    c = c & "    If InStr(b,""SYS:"")>0 Then WR ws,""ENVELOPE"",""SYS"",""System-Generated Message"",""This message was automatically generated by the SWIFT network infrastructure itself, not by a bank user or system."" & Chr(10) & ""Value: "" & GTV(b,""SYS"")" & L
-    c = c & "End Sub" & L & L
-
-    c = c & "Private Function GTV(b As String, tag As String) As String" & L
-    c = c & "    Dim p As Long: p=InStr(b,tag & "":""):  If p=0 Then GTV="""": Exit Function" & L
-    c = c & "    p=p+Len(tag)+1: Dim e1 As Long: e1=InStr(p,b,""}""): If e1=0 Then e1=Len(b)+1" & L
-    c = c & "    Dim e2 As Long: e2=InStr(p,b,""{""): If e2>0 And e2<e1 Then e1=e2" & L
-    c = c & "    GTV=Trim(Mid(b,p,e1-p))" & L
-    c = c & "End Function" & L & L
-
-    c = c & "Private Function EMT(mt As String) As String" & L
-    c = c & "    Dim n As String, w As String, x As String" & L
-    c = c & "    Select Case mt" & L
-    c = c & "        Case ""101"": n=""Request for Transfer"": w=""Corporate customer asking bank to make payments"": x=""The customer is instructing their bank to execute outgoing payments on their behalf — like a batch payment order.""" & L
-    c = c & "        Case ""103"": n=""Customer Credit Transfer"": w=""Bank sending money for a customer"": x=""THE most common SWIFT message in the world. A bank is transferring money from one customer to another at a different bank. This is an international wire transfer — like sending money abroad from your bank account.""" & L
-    c = c & "        Case ""104"": n=""Direct Debit"": w=""Company collecting money from a customer"": x=""Money is being PULLED from an account (like a direct debit or standing order). The money flows from the debtor to the creditor.""" & L
-    c = c & "        Case ""200"": n=""Own Account Transfer"": w=""Bank moving its own money"": x=""A bank is moving funds between two of its own accounts at different banks. This is NOT a customer payment — the bank is managing its own liquidity.""" & L
-    c = c & "        Case ""202"": n=""Bank-to-Bank Transfer"": w=""Two banks moving money between themselves"": x=""Banks are transferring funds directly between each other. No customer is directly involved. Often used to move funds between correspondent bank accounts, or to settle obligations between banks.""" & L
-    c = c & "        Case ""202COV"": n=""Cover Payment"": w=""Bank funding an underlying customer payment"": x=""This MT202 is a COVER payment — it physically moves the funds between banks to back up a separate customer payment (MT103) that was sent on its own. The two messages work as a pair.""" & L
-    c = c & "        Case ""205"": n=""Bank Transfer Execution"": w=""Intermediary bank forwarding a transfer"": x=""A bank that received a transfer instruction is now forwarding it to the next bank in the chain.""" & L
-    c = c & "        Case ""210"": n=""Notice to Receive"": w=""Bank giving advance notice of incoming funds"": x=""A bank is telling its correspondent to expect funds to arrive. Like sending a text saying 'I'm on my way' before arriving.""" & L
-    c = c & "        Case ""300"": n=""FX Confirmation"": w=""Two banks confirming a currency exchange deal"": x=""Two banks have agreed to exchange currencies (e.g. buy Euros, sell US Dollars) and this message confirms all the details: currencies, exchange rate, amount, and the date the exchange will happen.""" & L
-    c = c & "        Case ""320"": n=""Loan/Deposit Confirmation"": w=""Two banks confirming a money market deal"": x=""Two banks have agreed on a fixed-term loan or deposit — one bank lends money to another for a set period at a set interest rate. This message confirms all the terms of that deal.""" & L
-    c = c & "        Case ""330"": n=""Call/Notice Loan"": w=""Banks confirming an on-demand loan"": x=""Like a fixed loan but repayable on demand or very short notice (call money or notice money).""" & L
-    c = c & "        Case ""340"": n=""Forward Rate Agreement"": w=""Banks confirming an FRA"": x=""A contract that locks in an interest rate for a future period, protecting both parties against interest rate changes.""" & L
-    c = c & "        Case ""360"": n=""Interest Rate Swap"": w=""Banks confirming an IRS"": x=""One party pays a fixed interest rate; the other pays a floating rate. They swap interest payments on a notional amount. Used to manage interest rate risk.""" & L
-    c = c & "        Case ""361"": n=""Cross-Currency Swap"": w=""Banks confirming a CCIRS"": x=""An interest rate swap that also involves two different currencies — both interest payments and principal amounts in different currencies are exchanged.""" & L
-    c = c & "        Case ""400"": n=""Collection Payment"": w=""Bank confirming a collection has been paid"": x=""A bank confirms that a buyer has paid for goods under a documentary collection — where banks act as intermediaries to exchange documents for payment.""" & L
-    c = c & "        Case ""410"": n=""Collection Acknowledgement"": w=""Bank confirming documents received"": x=""Confirmation that collection documents have been received and are being presented to the buyer for payment.""" & L
-    c = c & "        Case ""412"": n=""Acceptance Advice"": w=""Bank confirming a bill has been accepted"": x=""The buyer has accepted (signed) a bill of exchange — a formal promise to pay on a specific future date.""" & L
-    c = c & "        Case ""420"": n=""Collection Tracer"": w=""Bank chasing for collection payment"": x=""A follow-up/reminder asking for an update or payment on a collection that has not yet been settled.""" & L
-    c = c & "        Case ""430"": n=""Collection Amendment"": w=""Bank amending collection instructions"": x=""The original collection instructions are being changed — perhaps the due date, amount, or handling instructions.""" & L
-    c = c & "        Case ""499"",""799"",""999"": n=""Free Format Message"": w=""Banks communicating freely"": x=""A free-text message — no fixed fields or structure. Used for general queries, clarifications, or communications that don't fit any standard MT format.""" & L
-    c = c & "        Case ""515"": n=""Securities Trade Confirmation"": w=""Bank confirming a trade for a client"": x=""Confirming the details of a securities (stocks or bonds) purchase or sale that has been executed on behalf of a client.""" & L
-    c = c & "        Case ""535"": n=""Holdings Statement"": w=""Custodian reporting what securities it holds"": x=""A bank holding securities in custody is reporting to the owner exactly what they hold — which stocks, bonds, or funds, and how many.""" & L
-    c = c & "        Case ""540"": n=""Receive Securities Free"": w=""Instruction to receive securities without paying"": x=""An instruction to accept securities (shares/bonds) without a simultaneous cash payment. Used for transfers, gifts, or collateral movements.""" & L
-    c = c & "        Case ""541"": n=""Receive vs Payment (DVP)"": w=""Instruction to buy securities"": x=""Receive securities AND pay cash at the same time — Delivery vs Payment (DVP). This is how most securities trades settle: you only get the shares when you pay, and you only pay when you get the shares.""" & L
-    c = c & "        Case ""542"": n=""Deliver Securities Free"": w=""Instruction to send securities without receiving cash"": x=""Send securities to another party without receiving payment. Used for transfers, gifts, or collateral.""" & L
-    c = c & "        Case ""543"": n=""Deliver vs Payment (DVP)"": w=""Instruction to sell securities"": x=""Deliver securities AND receive cash simultaneously. The sell-side settlement instruction.""" & L
-    c = c & "        Case ""564"": n=""Corporate Action Notice"": w=""Bank notifying investor of a corporate event"": x=""Something is happening to securities you hold — such as a dividend payment, rights issue, stock split, merger, or takeover offer. The bank is telling you about it so you can decide what to do.""" & L
-    c = c & "        Case ""565"": n=""Corporate Action Instruction"": w=""Investor telling bank what to do"": x=""You are instructing the bank how to handle a corporate event affecting your holdings — e.g. take the cash dividend, or exercise the rights.""" & L
-    c = c & "        Case ""600"": n=""Precious Metal Trade"": w=""Banks confirming a gold/silver deal"": x=""Confirmation of a trade in precious metals (gold, silver, platinum, palladium) — including the metal, quantity, price and delivery details.""" & L
-    c = c & "        Case ""700"": n=""Letter of Credit Issuance"": w=""Bank issuing an LC for a buyer"": x=""A LETTER OF CREDIT is one of the most important instruments in international trade."" & Chr(10) & ""A bank (on behalf of a buyer/importer) is making a formal, irrevocable promise to pay a seller/exporter — provided the seller presents documents proving the goods were shipped correctly."" & Chr(10) & ""The LC protects BOTH parties: the seller knows they will definitely get paid if they ship correctly; the buyer knows they only pay if goods are shipped as agreed."" & Chr(10) & ""Think of it as a trusted middleman (the bank) holding the money until both sides have done what they promised.""" & L
-    c = c & "        Case ""705"": n=""LC Pre-Advice"": w=""Bank giving advance warning of an LC"": x=""A preliminary notice that a full Letter of Credit will follow shortly. Gives the seller early warning to prepare.""" & L
-    c = c & "        Case ""707"": n=""LC Amendment"": w=""Bank changing an existing LC"": x=""The terms of an existing Letter of Credit are being changed. Could be the amount, expiry date, shipment date, documents required, or other conditions.""" & L
-    c = c & "        Case ""710"": n=""Third Bank LC Advice"": w=""Bank forwarding LC to another bank"": x=""An advising bank is passing the LC on to a second bank closer to the seller.""" & L
-    c = c & "        Case ""720"": n=""LC Transfer"": w=""Bank transferring LC to another beneficiary"": x=""A transferable LC is being passed from the first beneficiary (middleman/trader) to the second beneficiary (actual manufacturer/supplier).""" & L
-    c = c & "        Case ""730"": n=""LC Acknowledgement"": w=""Bank confirming it received the LC"": x=""The advising bank confirms it has received and is processing the Letter of Credit.""" & L
-    c = c & "        Case ""734"": n=""LC Document Refusal"": w=""Bank refusing documents under LC"": x=""The documents presented by the seller have been REJECTED because they don't comply with the LC requirements (discrepancies found). The seller must correct and resubmit, or get the buyer to waive the discrepancies.""" & L
-    c = c & "        Case ""740"": n=""Reimbursement Authorisation"": w=""LC issuing bank authorising reimbursement"": x=""The LC issuing bank is giving authority for a reimbursement bank to pay back the bank that paid the seller under the LC.""" & L
-    c = c & "        Case ""742"": n=""Reimbursement Claim"": w=""Paying bank claiming its money back"": x=""A bank that paid the seller under an LC is now formally claiming that money back from the reimbursement bank.""" & L
-    c = c & "        Case ""750"": n=""LC Discrepancy Advice"": w=""Bank reporting document problems"": x=""Documents presented under the LC have DISCREPANCIES — they don't exactly match the LC requirements. The issuing bank is asking the buyer whether to waive (accept) these discrepancies anyway.""" & L
-    c = c & "        Case ""752"": n=""LC Payment Authorisation"": w=""Bank authorising payment despite problems"": x=""The issuing bank is authorising the paying bank to go ahead and pay the seller even though there were discrepancies in the documents.""" & L
-    c = c & "        Case ""754"": n=""LC Payment Advice"": w=""Bank confirming payment was made under LC"": x=""Confirmation that payment has been made, a bill accepted, or documents negotiated under the Letter of Credit.""" & L
-    c = c & "        Case ""760"": n=""Bank Guarantee / Standby LC"": w=""Bank making a guarantee on behalf of a client"": x=""A BANK GUARANTEE (or Standby Letter of Credit) is a formal promise by a bank to pay a third party if their customer fails to meet an obligation."" & Chr(10) & ""EXAMPLE: A contractor is building a power plant. The project owner requires a Performance Bond. If the contractor abandons the project, the bank pays the project owner compensation under the guarantee."" & Chr(10) & ""Common types: Tender Bond (for bid submissions), Performance Bond (contractor completes work), Advance Payment Bond (protects prepayment), Retention Bond (replaces withheld money), Payment Guarantee (buyer will pay).""" & L
-    c = c & "        Case ""767"": n=""Guarantee Amendment"": w=""Bank changing an existing guarantee"": x=""An existing bank guarantee is being modified — perhaps extending its validity, increasing the amount, or changing the conditions.""" & L
-    c = c & "        Case ""768"": n=""Guarantee Acknowledgement"": w=""Bank confirming receipt of guarantee"": x=""Confirmation that a guarantee message has been received and processed.""" & L
-    c = c & "        Case ""769"": n=""Guarantee Release"": w=""Beneficiary releasing the guarantee"": x=""The beneficiary is releasing (cancelling) all or part of the guarantee because the underlying obligation has been fulfilled.""" & L
-    c = c & "        Case ""900"": n=""Debit Confirmation"": w=""Bank telling customer about a debit"": x=""Your bank is informing you that money has been TAKEN OUT of your account. The debit has already happened — this is a notification.""" & L
-    c = c & "        Case ""910"": n=""Credit Confirmation"": w=""Bank telling customer about a credit"": x=""Your bank is informing you that money has been PUT INTO your account. The credit has already happened — this is a notification.""" & L
-    c = c & "        Case ""920"": n=""Statement Request"": w=""Requesting a bank statement"": x=""A request to the bank to send an account statement.""" & L
-    c = c & "        Case ""940"": n=""Customer Account Statement"": w=""Full bank statement for a customer"": x=""A complete BANK ACCOUNT STATEMENT. It shows the opening balance, every transaction that happened during the period (both money in and money out), and the closing balance. Exactly like your monthly bank statement.""" & L
-    c = c & "        Case ""941"": n=""Balance Report"": w=""Bank reporting only the balances"": x=""Shows only account balances — no individual transactions. Used when the other party only needs to know the balance, not the full transaction history.""" & L
-    c = c & "        Case ""942"": n=""Intraday Statement"": w=""Transactions that happened today so far"": x=""An account statement sent DURING THE DAY — not waiting until end of business. Lets companies track money movements as they happen throughout the day.""" & L
-    c = c & "        Case ""950"": n=""Bank-to-Bank Statement"": w=""Statement between banks"": x=""An account statement sent between banks (not to a customer) to help them reconcile their inter-bank accounts.""" & L
-    c = c & "        Case ""985"": n=""Status Inquiry"": w=""Asking what happened to a previous message"": x=""A bank is asking: what happened to the message I sent earlier? Has it been processed? Is there a problem?""" & L
-    c = c & "        Case ""986"": n=""Status Report"": w=""Responding to a status inquiry"": x=""The reply to an MT985 — reporting on the current status of the message being enquired about.""" & L
-    c = c & "        Case ""992"": n=""Cancellation Request"": w=""Bank asking to cancel a previous message"": x=""A request to cancel a previously sent message. If the original transaction has already been processed, a separate recall/return process may be needed.""" & L
-    c = c & "        Case Else: n=""Message Type "" & mt: w=""Banks"": x=""SWIFT MT"" & mt & "". "" & IIf(Left(mt,1)=""1"",""Category 1: Customer Payments."",IIf(Left(mt,1)=""2"",""Category 2: Bank Transfers."",IIf(Left(mt,1)=""3"",""Category 3: Treasury/FX."",IIf(Left(mt,1)=""5"",""Category 5: Securities."",IIf(Left(mt,1)=""7"",""Category 7: Trade Finance."",IIf(Left(mt,1)=""9"",""Category 9: Cash Management."",""""))))))) " & L
-    c = c & "    End Select" & L
-    c = c & "    EMT=""MESSAGE TYPE: MT"" & mt & "" — "" & n & Chr(10) & Chr(10) & ""WHO IS INVOLVED: "" & w & Chr(10) & Chr(10) & ""WHAT THIS MESSAGE IS:"" & Chr(10) & x" & L
-    c = c & "End Function" & L & L
-
-    c = c & "Private Function EF(v As String) As String" & L
-    c = c & "    Select Case UCase(Trim(v))" & L
-    c = c & "        Case ""STP"": EF=""STP = Straight-Through Processing."" & Chr(10) & ""This message MUST be processed AUTOMATICALLY by computers with NO human intervention. Manual handling would violate this requirement.""" & L
-    c = c & "        Case ""COV"": EF=""COV = Cover Payment."" & Chr(10) & ""This MT202 bank transfer is the FUNDING SIDE of a separate MT103 customer payment. They work as a pair — the MT103 carries the payment instructions, this MT202 moves the actual money between banks.""" & L
-    c = c & "        Case ""REMIT"": EF=""REMIT = Extended Remittance."" & Chr(10) & ""This payment carries detailed remittance information (invoice data, payment references) beyond what fits in the standard field.""" & L
-    c = c & "        Case ""SCORE"": EF=""SCORE = SWIFT SCORE Service."" & Chr(10) & ""Validated through SWIFT's correspondent banking due diligence framework.""" & L
-    c = c & "        Case Else: EF=""Processing flag: "" & v" & L
-    c = c & "    End Select" & L
-    c = c & "End Function" & L & L
-
-    c = c & "Private Sub EF2(ws As Worksheet, mt As String, tag As String, val As String)" & L
-    c = c & "    Dim sec As String, fn As String, mn As String, vt As String: vt=Trim(val)" & L
-    c = c & "    Select Case tag" & L
-    c = c & "    Case ""20"": sec=""PAYMENT INFO"": fn=""Transaction Reference Number"": mn=""The REFERENCE NUMBER the sending bank assigned to this transaction. Every SWIFT message has one — used to identify and track this specific instruction."" & Chr(10) & ""Reference: "" & vt" & L
-    c = c & "    Case ""21"": sec=""PAYMENT INFO"": fn=""Related Reference"": mn=""This message relates to a PREVIOUS message with reference: "" & vt & Chr(10) & ""It is linking this new message back to an earlier instruction or transaction.""" & L
-    c = c & "    Case ""13C"": sec=""PAYMENT INFO"": fn=""Time Indication"": mn=""A specific time that applies to this payment — for example the time funds should be credited. Value: "" & vt" & L
-    c = c & "    Case ""23B"": sec=""PAYMENT INFO"": fn=""Type of Transfer""" & L
-    c = c & "        Select Case UCase(vt)" & L
-    c = c & "            Case ""CRED"": mn=""CRED = Standard Credit Transfer."" & Chr(10) & ""Money is being credited (sent) from the sender to the receiver. This is the normal, most common type of payment transfer.""" & L
-    c = c & "            Case ""CRTS"": mn=""CRTS = Credit Transfer for Settlement."" & Chr(10) & ""Similar to standard credit but specifically used for settlement purposes.""" & L
-    c = c & "            Case ""SPAY"": mn=""SPAY = SWIFT Pay."" & Chr(10) & ""Using the SWIFT Pay expedited payment channel.""" & L
-    c = c & "            Case ""SSTD"": mn=""SSTD = SWIFT Standard."" & Chr(10) & ""Processed through the SWIFT standard settlement channel.""" & L
-    c = c & "            Case ""SPRI"": mn=""SPRI = SWIFT Priority."" & Chr(10) & ""This payment is flagged HIGH PRIORITY and should jump ahead of normal payments in the queue.""" & L
-    c = c & "            Case Else: mn=""Transfer type: "" & vt" & L
-    c = c & "        End Select" & L
-    c = c & "    Case ""23E"": sec=""PAYMENT INFO"": fn=""Special Handling Instructions""" & L
-    c = c & "        Dim ec As String: ec=UCase(Left(vt,4)): Dim ep As String: ep=IIf(Len(vt)>5,"" | Additional detail: "" & Mid(vt,6),"""")" & L
-    c = c & "        Select Case ec" & L
-    c = c & "            Case ""CHQB"": mn=""CHQB = Pay by CHEQUE."" & Chr(10) & ""The beneficiary must be paid by a physical cheque — not by electronic bank transfer."" & ep" & L
-    c = c & "            Case ""CORT"": mn=""CORT = Corporate Trade Payment."" & Chr(10) & ""This payment is connected to a trade transaction (payment for goods or services)."" & ep" & L
-    c = c & "            Case ""HOLD"": mn=""HOLD = Hold for Collection."" & Chr(10) & ""Do NOT credit the account. The beneficiary must come to the bank IN PERSON to collect the funds."" & ep" & L
-    c = c & "            Case ""INTC"": mn=""INTC = Intra-Company Payment."" & Chr(10) & ""This is a payment between two entities within the SAME corporate group (e.g. parent to subsidiary)."" & ep" & L
-    c = c & "            Case ""NETS"": mn=""NETS = Netting Payment."" & Chr(10) & ""Part of a netting arrangement — multiple payments are offset against each other and only the net difference is paid."" & ep" & L
-    c = c & "            Case ""PHOB"": mn=""PHOB = Phone Beneficiary BEFORE Paying."" & Chr(10) & ""The paying bank must CALL the beneficiary before releasing funds."" & ep" & L
-    c = c & "            Case ""PHON"": mn=""PHON = Phone Beneficiary's Bank."" & Chr(10) & ""The receiving bank should call its customer before crediting their account."" & ep" & L
-    c = c & "            Case ""RTGS"": mn=""RTGS = Real-Time Gross Settlement."" & Chr(10) & ""This payment MUST go through the central bank RTGS system — used for large, urgent payments that settle individually and immediately."" & ep" & L
-    c = c & "            Case ""SDVA"": mn=""SDVA = Same Day Value."" & Chr(10) & ""The beneficiary MUST be credited TODAY — the same day the funds arrive. No overnight holding."" & ep" & L
-    c = c & "            Case ""REPA"": mn=""REPA = Repo Related."" & Chr(10) & ""This payment is connected to a repurchase agreement (repo) transaction."" & ep" & L
-    c = c & "            Case Else: mn=""Special instruction: "" & vt" & L
-    c = c & "        End Select" & L
-    c = c & "    Case ""26T"": sec=""PAYMENT INFO"": fn=""Payment Purpose Code"": mn=""This code tells regulators WHY this payment is being made."" & Chr(10) & ""Banks in many countries must report the reason for cross-border payments for regulatory and anti-money-laundering purposes."" & Chr(10) & ""Purpose code: "" & vt" & L
-    c = c & "    Case ""25"",""25P"": sec=""STATEMENT"": fn=""Account Number"": mn=""The ACCOUNT NUMBER this statement or confirmation relates to."" & Chr(10) & ""All the transactions and balances shown are for this account."" & Chr(10) & ""Account: "" & Replace(vt,Chr(10),"" "")" & L
-    c = c & "    Case ""28C"": sec=""STATEMENT"": fn=""Statement Number"": Dim sl As Integer: sl=InStr(vt,""/""): mn=""Statement number: "" & IIf(sl>0,Left(vt,sl-1),vt) & "", Page: "" & IIf(sl>0,Mid(vt,sl+1),""1"") & Chr(10) & ""If you receive multiple messages for the same statement period, the statement number stays the same while the page number increases.""" & L
-    c = c & "    Case ""32A"": sec=""AMOUNT"": fn=""Settlement Date, Currency and Amount""" & L
-    c = c & "        If Len(vt)>=9 Then" & L
-    c = c & "            Dim d32 As String: d32=Left(vt,6): Dim cy32 As String: cy32=Mid(vt,7,3): Dim am32 As String: am32=Replace(Mid(vt,10),"","",""."")" & L
-    c = c & "            mn=""SETTLEMENT DATE: 20"" & Left(d32,2) & ""/"" & Mid(d32,3,2) & ""/"" & Right(d32,2) & Chr(10) & ""CURRENCY: "" & cy32 & "" ("" & CCY(cy32) & "")"" & Chr(10) & ""AMOUNT: "" & cy32 & "" "" & am32 & Chr(10) & Chr(10) & ""The settlement date is when the money actually moves between banks (may differ from the instruction date). The amount is what is being transferred.""" & L
-    c = c & "        Else: mn=vt: End If" & L
-    c = c & "    Case ""32B"": sec=""AMOUNT"": fn=""Currency and Amount""" & L
-    c = c & "        If Len(vt)>=4 Then mn=""Currency: "" & Left(vt,3) & "" ("" & CCY(Left(vt,3)) & "")"" & Chr(10) & ""Amount: "" & Left(vt,3) & "" "" & Replace(Mid(vt,4),"","",""."")" & L
-    c = c & "        Else: mn=vt: End If" & L
-    c = c & "    Case ""33B"": sec=""AMOUNT"": fn=""Original Amount (Before Conversion)""" & L
-    c = c & "        If Len(vt)>=4 Then mn=""This is the ORIGINAL amount in the ORIGINAL currency, before any foreign exchange conversion."" & Chr(10) & ""Original: "" & Left(vt,3) & "" "" & Replace(Mid(vt,4),"","",""."")" & Chr(10) & ""If this differs from field 32A, it means the amount was converted at the exchange rate shown in field 36.""" & L
-    c = c & "        Else: mn=vt: End If" & L
-    c = c & "    Case ""36"": sec=""AMOUNT"": fn=""Exchange Rate"": mn=""The foreign exchange rate used to convert between the two currencies."" & Chr(10) & ""Rate: "" & Replace(vt,"","",""."")" & L
-    c = c & "    Case ""50A"",""50F"",""50K"",""50"": sec=""PAYER"": fn=""The Person or Company SENDING the Money"": mn=""WHO IS SENDING THE MONEY (the Payer / Ordering Customer):"" & Chr(10) & EP(vt)" & L
-    c = c & "    Case ""51A"": sec=""BANKS"": fn=""Sending Institution (Acting for Payer)"": mn=""This bank is acting on behalf of the payer to send this message. It sits between the payer and the main sending bank."" & Chr(10) & EP(vt)" & L
-    c = c & "    Case ""52A"",""52D"": sec=""BANKS"": fn=""Payer's Bank (Ordering Institution)"": mn=""The BANK OF THE PERSON SENDING THE MONEY:"" & Chr(10) & EP(vt)" & L
-    c = c & "    Case ""53A"",""53B"",""53D"": sec=""BANKS"": fn=""Sender's Correspondent Bank"": mn=""A CORRESPONDENT BANK on the SENDER'S side of the payment chain."" & Chr(10) & ""In international payments, banks don't always have direct accounts with each other. They use correspondent banks as trusted middlemen. This bank reimburses the sender's bank."" & Chr(10) & EP(vt)" & L
-    c = c & "    Case ""54A"",""54B"",""54D"": sec=""BANKS"": fn=""Receiver's Correspondent Bank"": mn=""A CORRESPONDENT BANK on the RECEIVER'S side of the payment chain."" & Chr(10) & ""This bank is the middleman on the receiving end, helping get the funds to the beneficiary's bank."" & Chr(10) & EP(vt)" & L
-    c = c & "    Case ""55A"": sec=""BANKS"": fn=""Third Reimbursement Bank"": mn=""A third bank involved in the reimbursement chain."" & Chr(10) & EP(vt)" & L
-    c = c & "    Case ""56A"",""56C"",""56D"": sec=""BANKS"": fn=""Intermediary Bank"": mn=""A bank sitting IN THE MIDDLE of the payment chain between correspondents."" & Chr(10) & ""Complex international payments can involve: Payer's bank → Intermediary → Beneficiary's bank."" & Chr(10) & EP(vt)" & L
-    c = c & "    Case ""57A"",""57B"",""57C"",""57D"": sec=""BANKS"": fn=""Beneficiary's Bank (Where Payee Holds Account)"": mn=""The BANK WHERE THE PAYEE (RECEIVER) HAS THEIR ACCOUNT."" & Chr(10) & ""This is the final destination bank — the bank that will credit the beneficiary's account."" & Chr(10) & EP(vt)" & L
-    c = c & "    Case ""58A"",""58D"": sec=""BANKS"": fn=""Beneficiary Institution (Final Receiving Bank)"": mn=""The FINAL RECEIVING FINANCIAL INSTITUTION in this transaction."" & Chr(10) & EP(vt)" & L
-    c = c & "    Case ""59"",""59A"",""59F"": sec=""PAYEE"": fn=""The Person or Company RECEIVING the Money"": mn=""WHO IS RECEIVING THE MONEY (the Beneficiary / Payee):"" & Chr(10) & EP(vt)" & L
-    c = c & "    Case ""60F"",""60M"": sec=""STATEMENT"": fn=""Opening Balance (Balance at Start)"": mn=EB(vt,""OPENING balance — the account balance at the START of this statement period"")" & L
-    c = c & "    Case ""61"": sec=""STATEMENT"": fn=""Transaction Entry (Individual Movement)"": mn=E61(vt)" & L
-    c = c & "    Case ""62F"",""62M"": sec=""STATEMENT"": fn=""Closing Balance (Balance at End)"": mn=EB(vt,""CLOSING balance — the account balance at the END of this statement period"")" & L
-    c = c & "    Case ""64"": sec=""STATEMENT"": fn=""Available Balance"": mn=EB(vt,""AVAILABLE balance — funds currently available for withdrawal or use"")" & L
-    c = c & "    Case ""65"": sec=""STATEMENT"": fn=""Forward Available Balance"": mn=EB(vt,""FORWARD AVAILABLE balance — funds expected to be available on the date shown"")" & L
-    c = c & "    Case ""86"": sec=""STATEMENT"": fn=""Transaction Description"": mn=""Description/narrative for the transaction line directly above this one."" & Chr(10) & ""Details: "" & Replace(vt,Chr(10),"" | "")" & L
-    c = c & "    Case ""70"": sec=""PAYMENT INFO"": fn=""Payment Details / What the Payment Is For"": mn=""The PAYMENT DESCRIPTION or REMITTANCE INFORMATION — this is what appears in the bank statement and tells the receiver what the payment is for."" & Chr(10) & ""Often contains invoice numbers, order references, or a payment description."" & Chr(10) & ""Content: "" & Replace(vt,Chr(10),"" | "")" & L
-    c = c & "    Case ""71A"": sec=""PAYMENT INFO"": fn=""Who Pays the Bank Charges?""" & L
-    c = c & "        Select Case UCase(vt)" & L
-    c = c & "            Case ""OUR"": mn=""OUR = The SENDER pays ALL bank charges."" & Chr(10) & ""This means: sender's bank fees + all intermediary bank fees + receiving bank fees are ALL paid by the person sending the money."" & Chr(10) & ""The beneficiary receives the FULL instructed amount with no deductions at all.""" & L
-    c = c & "            Case ""SHA"": mn=""SHA = SHARED charges (the most common arrangement)."" & Chr(10) & ""The SENDER pays their own bank's charges."" & Chr(10) & ""The BENEFICIARY pays the receiving bank's charges."" & Chr(10) & ""The beneficiary may receive slightly less than the instructed amount due to receiving bank fees.""" & L
-    c = c & "            Case ""BEN"": mn=""BEN = The BENEFICIARY pays ALL charges."" & Chr(10) & ""All bank fees throughout the entire chain (sending + intermediary + receiving) are deducted from the payment amount."" & Chr(10) & ""The beneficiary receives the amount MINUS all bank charges — could be significantly less than instructed.""" & L
-    c = c & "            Case Else: mn=""Charge instruction: "" & vt" & L
-    c = c & "        End Select" & L
-    c = c & "    Case ""71F"": sec=""PAYMENT INFO"": fn=""Sender's Bank Charges Already Deducted"": mn=""The sending bank has already DEDUCTED this amount from the payment as their fee."" & Chr(10) & ""The beneficiary will receive less by exactly this amount."" & Chr(10) & ""Charges deducted: "" & vt" & L
-    c = c & "    Case ""71G"": sec=""PAYMENT INFO"": fn=""Receiver's Bank Charges to Be Collected"": mn=""The receiving bank will charge this amount, to be deducted from the payment."" & Chr(10) & ""Reduces the amount the beneficiary ultimately receives."" & Chr(10) & ""Charges: "" & vt" & L
-    c = c & "    Case ""72"": sec=""PAYMENT INFO"": fn=""Bank-to-Bank Instructions (Not for Customer)"": mn=""Instructions from bank to bank — the customer does not see these."" & Chr(10) & E72(vt)" & L
-    c = c & "    Case ""77B"": sec=""PAYMENT INFO"": fn=""Regulatory Reporting"": mn=""Information required by government regulators about this payment."" & Chr(10) & ""Banks in many countries must report the purpose of cross-border payments for balance-of-payments statistics and anti-money-laundering compliance."" & Chr(10) & ""Content: "" & Replace(vt,Chr(10),"" | "")" & L
-    c = c & "    Case ""77C"": sec=""LC / GUARANTEE"": fn=""Guarantee Text"": mn=""The actual text of the bank guarantee or undertaking — what the bank promises to pay, under what conditions, and up to what amount."" & Chr(10) & ""Text: "" & Left(Replace(vt,Chr(10),"" ""),500)" & L
-    c = c & "    Case ""78"": sec=""LC / GUARANTEE"": fn=""Instructions to the Paying Bank"": mn=""Specific instructions from the LC issuing bank to the bank that will pay the seller."" & Chr(10) & ""Instructions: "" & Replace(vt,Chr(10),"" | "")" & L
-    c = c & "    Case ""79"": sec=""LC / GUARANTEE"": fn=""Narrative / Free Text"": mn=""Free-format text with additional details, amendments, or explanations."" & Chr(10) & ""Content: "" & Replace(vt,Chr(10),"" | "")" & L
-    c = c & "    Case ""27"": sec=""LC / GUARANTEE"": fn=""Page Number"": mn=""This is page "" & Split(vt,""/"" )(0) & "" of "" & IIf(InStr(vt,""/`"")>0,Split(vt,""/"" )(1),""?"") & "" pages total for this message.""" & L
-    c = c & "    Case ""31C"": sec=""LC / GUARANTEE"": fn=""Date of Issue"": mn=""The date this LC or guarantee was issued (created and put into effect)."" & Chr(10) & ED6(vt)" & L
-    c = c & "    Case ""31D"": sec=""LC / GUARANTEE"": fn=""Expiry Date and Place"": mn=""The LC EXPIRES on this date and must be used at this location."" & Chr(10) & ""The seller MUST present all required documents BEFORE this date."" & Chr(10) & ""After this date the LC is no longer valid."" & Chr(10) & IIf(Len(vt)>=6,""Expiry: 20"" & Left(vt,2) & ""/"" & Mid(vt,3,2) & ""/"" & Right(vt,2) & "" at: "" & Trim(Mid(vt,7)),vt)" & L
-    c = c & "    Case ""39A"": sec=""LC / GUARANTEE"": fn=""Amount Tolerance"": mn=""The actual shipment amount can differ from the LC amount by this percentage."" & Chr(10) & ""For example '5/5' means +5% or -5% is acceptable — useful because commodity quantities are never exactly precise."" & Chr(10) & ""Tolerance: "" & vt" & L
-    c = c & "    Case ""39B"": sec=""LC / GUARANTEE"": fn=""Maximum Amount"": mn=""The LC amount is a MAXIMUM — the seller can draw less but not more than this amount."" & Chr(10) & ""Value: "" & vt" & L
-    c = c & "    Case ""40A"": sec=""LC / GUARANTEE"": fn=""Type of Letter of Credit""" & L
-    c = c & "        Select Case UCase(vt)" & L
-    c = c & "            Case ""IRREVOCABLE"": mn=""IRREVOCABLE — The standard and most common LC type."" & Chr(10) & ""Once issued, this LC CANNOT be changed or cancelled without the agreement of ALL parties: the issuing bank, advising bank, and the seller."" & Chr(10) & ""The seller can rely on it as a firm, unconditional payment commitment.""" & L
-    c = c & "            Case ""REVOCABLE"": mn=""REVOCABLE — A rare and seller-unfriendly type."" & Chr(10) & ""Can be cancelled by the issuing bank without notifying the seller."" & Chr(10) & ""Under UCP 600 (the international LC rules), all LCs are treated as irrevocable even if not stated. Rarely used.""" & L
-    c = c & "            Case ""IRREVOCABLE TRANSFERABLE"": mn=""IRREVOCABLE TRANSFERABLE — The LC can be transferred by the first beneficiary to a second beneficiary."" & Chr(10) & ""Used when a middleman/trader is involved who needs to pass the LC on to their actual supplier.""" & L
-    c = c & "            Case ""IRREVOCABLE STANDBY"": mn=""IRREVOCABLE STANDBY — A Standby Letter of Credit (SBLC)."" & Chr(10) & ""Unlike a commercial LC, this is only drawn upon if the applicant FAILS to meet their payment obligation. It is essentially a bank guarantee in LC form.""" & L
-    c = c & "            Case Else: mn=""LC type: "" & vt" & L
-    c = c & "        End Select" & L
-    c = c & "    Case ""40C"",""40E"": sec=""LC / GUARANTEE"": fn=""Rules Governing This LC or Guarantee""" & L
-    c = c & "        If InStr(UCase(vt),""UCP"")>0 Then mn=""UCP 600 (Uniform Customs and Practice for Documentary Credits, ICC 2007)."" & Chr(10) & ""The internationally agreed rulebook published by the International Chamber of Commerce (ICC) that governs how Letters of Credit work. The global standard, used by banks in 175+ countries.""" & L
-    c = c & "        ElseIf InStr(UCase(vt),""URDG"")>0 Then mn=""URDG 758 (Uniform Rules for Demand Guarantees, ICC 2010)."" & Chr(10) & ""The ICC rules that govern demand guarantees and standby LCs — the equivalent of UCP 600 but for guarantees.""" & L
-    c = c & "        ElseIf InStr(UCase(vt),""ISP"")>0 Then mn=""ISP98 (International Standby Practices)."" & Chr(10) & ""Rules specifically designed for Standby Letters of Credit.""" & L
-    c = c & "        ElseIf InStr(UCase(vt),""EUCP"")>0 Then mn=""eUCP — the electronic supplement to UCP 600."" & Chr(10) & ""For Letters of Credit where documents are presented electronically rather than on paper.""" & L
-    c = c & "        Else: mn=""Applicable rules: "" & vt: End If" & L
-    c = c & "    Case ""41A"",""41D"": sec=""LC / GUARANTEE"": fn=""Where and How the LC Can Be Used""" & L
-    c = c & "        mn=""This tells us TWO things: (1) AT WHICH BANK the seller can present documents, and (2) HOW they get paid."" & Chr(10)" & L
-    c = c & "        If InStr(UCase(vt),""SIGHT"")>0 Then mn=mn & ""BY SIGHT PAYMENT: the seller gets paid immediately upon presenting compliant documents."" & Chr(10)" & L
-    c = c & "        If InStr(UCase(vt),""NEGOTIATION"")>0 Then mn=mn & ""BY NEGOTIATION: the seller can get early payment from their bank, which then claims from the LC."" & Chr(10)" & L
-    c = c & "        If InStr(UCase(vt),""ACCEPTANCE"")>0 Then mn=mn & ""BY ACCEPTANCE: the seller receives a bill of exchange (like a post-dated cheque) accepted by the bank."" & Chr(10)" & L
-    c = c & "        If InStr(UCase(vt),""DEF"")>0 Then mn=mn & ""BY DEFERRED PAYMENT: the seller gets paid on a fixed future date."" & Chr(10)" & L
-    c = c & "        mn=mn & ""Bank details: "" & Replace(vt,Chr(10),"" | "")" & L
-    c = c & "    Case ""42C"": sec=""LC / GUARANTEE"": fn=""When Drafts Are Payable (Tenor)"": mn=""The TENOR tells us WHEN payment is due under this LC."" & Chr(10) & ""SIGHT = immediately upon presenting documents."" & Chr(10) & ""30/60/90/180 DAYS = payment is due that many days after presentation or shipment date."" & Chr(10) & ""This determines whether the seller gets paid immediately or must wait."" & Chr(10) & ""Tenor: "" & vt" & L
-    c = c & "    Case ""43P"": sec=""LC / GUARANTEE"": fn=""Are Partial Shipments Allowed?""" & L
-    c = c & "        Select Case UCase(vt)" & L
-    c = c & "            Case ""ALLOWED"": mn=""ALLOWED — Goods CAN be shipped in multiple separate lots."" & Chr(10) & ""The seller does not need to ship everything at once — they can deliver in batches.""" & L
-    c = c & "            Case ""NOT ALLOWED"": mn=""NOT ALLOWED — ALL goods MUST be shipped in ONE single consignment."" & Chr(10) & ""The seller cannot split the delivery. Everything must go in one shipment.""" & L
-    c = c & "            Case ""CONDITIONAL"": mn=""CONDITIONAL — Partial shipments allowed only under specific conditions stated in this LC.""" & L
-    c = c & "            Case Else: mn=""Partial shipments: "" & vt" & L
-    c = c & "        End Select" & L
-    c = c & "    Case ""43T"": sec=""LC / GUARANTEE"": fn=""Is Transshipment Allowed?""" & L
-    c = c & "        Select Case UCase(vt)" & L
-    c = c & "            Case ""ALLOWED"": mn=""ALLOWED — Goods may be unloaded from one ship/vehicle and transferred to another at an intermediate port or hub before reaching the final destination."" & Chr(10) & ""Common on complex shipping routes.""" & L
-    c = c & "            Case ""NOT ALLOWED"": mn=""NOT ALLOWED — Goods must travel DIRECTLY from loading point to destination on the same vessel/vehicle."" & Chr(10) & ""No unloading and reloading at any intermediate point.""" & L
-    c = c & "            Case Else: mn=""Transshipment: "" & vt" & L
-    c = c & "        End Select" & L
-    c = c & "    Case ""44A"": sec=""LC / GUARANTEE"": fn=""Place of Taking In Charge (Dispatch Point)"": mn=""The location where the carrier takes responsibility for the goods — the START of the shipment."" & Chr(10) & ""Place: "" & vt" & L
-    c = c & "    Case ""44B"": sec=""LC / GUARANTEE"": fn=""Place of Final Destination"": mn=""Where the goods must ultimately be delivered."" & Chr(10) & ""Destination: "" & vt" & L
-    c = c & "    Case ""44C"": sec=""LC / GUARANTEE"": fn=""Latest Date for Shipment"": mn=""The DEADLINE — goods must be shipped ON OR BEFORE this date."" & Chr(10) & ""Shipping even one day late means the documents will be rejected as discrepant."" & Chr(10) & ED6(vt)" & L
-    c = c & "    Case ""44D"": sec=""LC / GUARANTEE"": fn=""Shipment Period"": mn=""The allowed window for shipment (free text description)."" & Chr(10) & ""Period: "" & Replace(vt,Chr(10),"" | "")" & L
-    c = c & "    Case ""44E"": sec=""LC / GUARANTEE"": fn=""Port of Loading"": mn=""The PORT or AIRPORT where goods are LOADED for shipment."" & Chr(10) & ""Must match the Bill of Lading."" & Chr(10) & ""Port: "" & vt" & L
-    c = c & "    Case ""44F"": sec=""LC / GUARANTEE"": fn=""Port of Discharge"": mn=""The PORT or AIRPORT where goods ARRIVE and are unloaded."" & Chr(10) & ""Port: "" & vt" & L
-    c = c & "    Case ""45A"": sec=""LC / GUARANTEE"": fn=""Description of Goods or Services"": mn=""What is being bought and sold under this LC."" & Chr(10) & ""The goods shipped MUST EXACTLY match this description — any difference is a discrepancy."" & Chr(10) & ""Description: "" & Left(Replace(vt,Chr(10),"" ""),400)" & L
-    c = c & "    Case ""46A"": sec=""LC / GUARANTEE"": fn=""Documents the Seller Must Present to Get Paid"": mn=""The complete list of documents the seller MUST submit to the bank to trigger payment."" & Chr(10) & ""Typically includes: Commercial Invoice, Bill of Lading (proof of shipment), Packing List, Certificate of Origin, Insurance Certificate."" & Chr(10) & ""Every document must comply EXACTLY. Even a typo can be a discrepancy."" & Chr(10) & ""Required: "" & Left(Replace(vt,Chr(10),"" | ""),500)" & L
-    c = c & "    Case ""47A"": sec=""LC / GUARANTEE"": fn=""Additional Special Conditions"": mn=""Extra conditions and requirements beyond the standard LC terms."" & Chr(10) & ""Could include: specific markings on documents, packing requirements, inspection certificates, language requirements."" & Chr(10) & ""Conditions: "" & Left(Replace(vt,Chr(10),"" ""),400)" & L
-    c = c & "    Case ""48"": sec=""LC / GUARANTEE"": fn=""Days to Present Documents After Shipment"": mn=""The seller must submit ALL required documents to the bank within "" & vt & "" DAYS after the shipment date."" & Chr(10) & ""If documents arrive even one day late they will be rejected as discrepant (also subject to the overall expiry date).""" & L
-    c = c & "    Case ""49"": sec=""LC / GUARANTEE"": fn=""Does the Advising Bank Add Its Guarantee?""" & L
-    c = c & "        Select Case UCase(vt)" & L
-    c = c & "            Case ""CONFIRM"": mn=""CONFIRM — The advising bank in the seller's country has ADDED ITS OWN PAYMENT GUARANTEE."" & Chr(10) & ""The seller now has TWO banks guaranteeing payment: the LC issuing bank (buyer's bank) AND the advising bank (seller's local bank)."" & Chr(10) & ""This is the HIGHEST level of security for the seller. Even if the issuing bank or the buyer's country defaults, the local confirming bank still pays.""" & L
-    c = c & "            Case ""WITHOUT"": mn=""WITHOUT — The advising bank is simply passing on the LC without adding its own guarantee."" & Chr(10) & ""The seller relies only on the issuing bank's (buyer's bank's) promise to pay."" & Chr(10) & ""No additional security from the advising bank.""" & L
-    c = c & "            Case ""MAY ADD"": mn=""MAY ADD — The advising bank may decide to add its confirmation based on its own risk assessment."" & Chr(10) & ""Whether confirmation is added is at the advising bank's discretion.""" & L
-    c = c & "            Case Else: mn=""Confirmation: "" & vt" & L
-    c = c & "        End Select" & L
-    c = c & "    Case ""22A"": sec=""LC / GUARANTEE"": fn=""Purpose of This Guarantee Message""" & L
-    c = c & "        Select Case UCase(vt)" & L
-    c = c & "            Case ""ISSU"": mn=""ISSU = NEW ISSUANCE."" & Chr(10) & ""A brand new guarantee is being issued. The bank is making a fresh formal commitment on behalf of their customer.""" & L
-    c = c & "            Case ""AMND"": mn=""AMND = AMENDMENT."" & Chr(10) & ""An existing guarantee is being CHANGED — perhaps the amount, validity date, or conditions are being modified.""" & L
-    c = c & "            Case ""CANC"": mn=""CANC = CANCELLATION."" & Chr(10) & ""The guarantee is being CANCELLED and is no longer in effect.""" & L
-    c = c & "            Case ""TRIG"": mn=""TRIG = TRIGGERED / CALLED."" & Chr(10) & ""The guarantee has been ACTIVATED. The beneficiary is making a formal demand for payment because the party guaranteed has FAILED to meet their obligation."" & Chr(10) & ""This is the guarantee being 'drawn on' — payment is being claimed.""" & L
-    c = c & "            Case ""ACKS"": mn=""ACKS = ACKNOWLEDGEMENT."" & Chr(10) & ""Confirming receipt and processing of a guarantee message.""" & L
-    c = c & "            Case ""REDE"": mn=""REDE = REDUCTION."" & Chr(10) & ""The guarantee amount is being REDUCED — a partial release as obligations are being fulfilled.""" & L
-    c = c & "            Case Else: mn=""Purpose: "" & vt" & L
-    c = c & "        End Select" & L
-    c = c & "    Case ""22B"",""22D"": sec=""LC / GUARANTEE"": fn=""Type of Bank Guarantee""" & L
-    c = c & "        Select Case UCase(vt)" & L
-    c = c & "            Case ""TEND"": mn=""TENDER / BID BOND."" & Chr(10) & ""Issued to support a bid or tender submission."" & Chr(10) & ""If the winning bidder REFUSES to sign the contract after winning, the guarantee compensates the project owner for the cost of re-tendering.""" & L
-    c = c & "            Case ""PERF"": mn=""PERFORMANCE BOND."" & Chr(10) & ""Guarantees that the contractor or supplier will COMPLETE the contracted work or supply to the required standard and timeline."" & Chr(10) & ""If they fail to complete properly, the guarantee pays the project owner compensation.""" & L
-    c = c & "            Case ""RETN"": mn=""RETENTION BOND."" & Chr(10) & ""Replaces the retention money that a buyer normally holds back until after project completion and defects liability period."" & Chr(10) & ""Instead of withholding payment, the buyer accepts this bond as security — giving the contractor their full payment sooner.""" & L
-    c = c & "            Case ""ADVA"": mn=""ADVANCE PAYMENT BOND."" & Chr(10) & ""Protects a buyer who has paid money in advance before goods are delivered or work is done."" & Chr(10) & ""If the supplier takes the advance payment but then fails to deliver, this bond repays the advance to the buyer.""" & L
-    c = c & "            Case ""PAYM"": mn=""PAYMENT GUARANTEE."" & Chr(10) & ""The bank guarantees that its customer (the buyer) will pay for goods or services."" & Chr(10) & ""Gives the seller confidence they will be paid even if they are uncertain about the buyer's creditworthiness.""" & L
-    c = c & "            Case ""CUST"": mn=""CUSTOMS BOND."" & Chr(10) & ""A guarantee provided to customs authorities — guarantees payment of customs duties and taxes if goods are imported without immediate payment.""" & L
-    c = c & "            Case ""LEAS"": mn=""LEASE GUARANTEE."" & Chr(10) & ""Guarantees payment of rent and performance of obligations under a lease agreement. Common in commercial property.""" & L
-    c = c & "            Case ""LOAN"": mn=""LOAN GUARANTEE."" & Chr(10) & ""The bank guarantees that a borrower will repay their loan. If the borrower defaults, the guaranteeing bank steps in and pays the lender.""" & L
-    c = c & "            Case ""WAIT"": mn=""WARRANTY / MAINTENANCE BOND."" & Chr(10) & ""Guarantees that equipment or construction works will remain fit for purpose during the warranty or maintenance period after handover.""" & L
-    c = c & "            Case ""OTHR"": mn=""OTHER TYPE — not covered by standard codes. See the guarantee text field for the specific details.""" & L
-    c = c & "            Case Else: mn=""Guarantee type: "" & vt" & L
-    c = c & "        End Select" & L
-    c = c & "    Case ""30T"": sec=""FX / MM"": fn=""Trade Date (When the Deal Was Agreed)"": mn=""The date the FX or money market deal was AGREED between the two parties."" & Chr(10) & ED8(vt)" & L
-    c = c & "    Case ""30V"": sec=""FX / MM"": fn=""Value Date (When Money Actually Moves)"": mn=""The date the currencies or funds actually EXCHANGE HANDS — the settlement date."" & Chr(10) & ED8(vt)" & L
-    c = c & "    Case ""30"": sec=""LC / GUARANTEE"": fn=""Date"": mn=ED6(vt)" & L
-    c = c & "    Case ""17R"": sec=""FX / MM"": fn=""Buy or Sell?"": mn=""From the sender's perspective — are they BUYING or SELLING the base currency?"" & Chr(10) & IIf(UCase(vt)=""B"",""B = BUY — the sender is BUYING the base currency (and paying in the other currency)"",""S = SELL — the sender is SELLING the base currency (and receiving the other currency)"")" & L
-    c = c & "    Case ""17T"": sec=""FX / MM"": fn=""Is Position Open or Closed?"": mn=IIf(UCase(vt)=""Y"",""Y = OPEN — this forward contract has not yet been settled (it is still outstanding)"",""N = CLOSED — this contract has been settled and is complete"")" & L
-    c = c & "    Case ""17U"": sec=""FX / MM"": fn=""Non-Deliverable Forward (NDF)?"": mn=IIf(UCase(vt)=""Y"",""Y = NON-DELIVERABLE (NDF) — no actual currencies are exchanged. Instead, only the profit or loss difference is paid in a major currency (e.g. USD). Used for currencies that cannot be freely traded internationally."",""N = DELIVERABLE — actual physical currencies will be exchanged on the value date"")" & L
-    c = c & "    Case ""94A"": sec=""FX / MM"": fn=""How Was This Deal Arranged?""" & L
-    c = c & "        Select Case UCase(vt)" & L
-    c = c & "            Case ""BILA"": mn=""BILA = BILATERAL — The two banks negotiated and agreed this deal DIRECTLY with each other, without any broker or intermediary."" " & L
-    c = c & "            Case ""BROK"": mn=""BROK = BROKERED — A broker arranged and intermediated this deal between the two banks."" " & L
-    c = c & "            Case Else: mn=""Deal arrangement: "" & vt" & L
-    c = c & "        End Select" & L
-    c = c & "    Case ""82A"",""82D"": sec=""FX / MM"": fn=""Party A (One Side of the Deal)"": mn=""Party A — one of the two counterparties in this FX or money market deal:"" & Chr(10) & EP(vt)" & L
-    c = c & "    Case ""87A"",""87D"": sec=""FX / MM"": fn=""Party B (Other Side of the Deal)"": mn=""Party B — the other counterparty in this deal:"" & Chr(10) & EP(vt)" & L
-    c = c & "    Case ""90C"": sec=""STATEMENT"": fn=""Total Credits Summary"": mn=""A summary of all CREDIT entries (money IN) on this statement."" & Chr(10) & ""Shows: number of credit transactions and their total value."" & Chr(10) & ""Credits: "" & vt" & L
-    c = c & "    Case ""90D"": sec=""STATEMENT"": fn=""Total Debits Summary"": mn=""A summary of all DEBIT entries (money OUT) on this statement."" & Chr(10) & ""Shows: number of debit transactions and their total value."" & Chr(10) & ""Debits: "" & vt" & L
-    c = c & "    Case Else: sec=""PAYMENT INFO"": fn=""Field "" & tag: mn=""Raw content of field :"" & tag & "":"" & Chr(10) & vt" & L
-    c = c & "    End Select" & L
-    c = c & "    Call WR(ws, sec, "":"" & tag & "":"", fn, mn)" & L
-    c = c & "End Sub" & L & L
-
-    c = c & "Private Function EP(v As String) As String" & L
-    c = c & "    Dim lns() As String: lns=Split(v,Chr(10)): Dim ac As String: ac="""": Dim nm As String: nm="""": Dim ad As String: ad="""": Dim i As Integer" & L
-    c = c & "    For i=0 To UBound(lns): Dim ln As String: ln=Trim(lns(i))" & L
-    c = c & "        If Left(ln,1)=""/"" And Len(ln)>3 Then ac=Mid(ln,2)" & L
-    c = c & "        If Left(ln,1)<>""/`"" And i=0 And Len(ln)>3 Then ac=ln" & L
-    c = c & "        If Left(ln,1)<>""/`"" And i=1 Then nm=ln" & L
-    c = c & "        If Left(ln,1)<>""/`"" And i>=2 Then ad=ad & IIf(Len(ad)>0,"", "","""") & ln" & L
-    c = c & "    Next i" & L
-    c = c & "    Dim r As String: r="""" " & L
-    c = c & "    If Len(ac)>0 Then r=r&""  Account/BIC: "" & ac & Chr(10)" & L
-    c = c & "    If Len(nm)>0 Then r=r&""  Name: "" & nm & Chr(10)" & L
-    c = c & "    If Len(ad)>0 Then r=r&""  Address: "" & ad" & L
-    c = c & "    If Len(r)=0 Then r=Replace(v,Chr(10),"" | "")" & L
-    c = c & "    EP=r" & L
-    c = c & "End Function" & L & L
-
-    c = c & "Private Function EB(v As String, lbl As String) As String" & L
-    c = c & "    If Len(v)<10 Then EB=v: Exit Function" & L
-    c = c & "    Dim dc As String: dc=Left(v,1): Dim dt As String: dt=Mid(v,2,6): Dim cy As String: cy=Mid(v,8,3): Dim am As String: am=Replace(Mid(v,11),"","",""."")" & L
-    c = c & "    EB=lbl & "":"" & Chr(10) & ""  "" & IIf(dc=""C"",""CREDIT (positive balance — money IS in the account)"",""DEBIT (negative balance — account is OVERDRAWN, spent more than received)"") & Chr(10) & ""  Date: 20"" & Left(dt,2) & ""/"" & Mid(dt,3,2) & ""/"" & Right(dt,2) & Chr(10) & ""  Currency: "" & cy & "" ("" & CCY(cy) & "")"" & Chr(10) & ""  Amount: "" & cy & "" "" & am" & L
-    c = c & "End Function" & L & L
-
-    c = c & "Private Function E61(v As String) As String" & L
-    c = c & "    If Len(v)<8 Then E61=v: Exit Function" & L
-    c = c & "    Dim vd As String: vd=Left(v,6): Dim pos As Integer: pos=7" & L
-    c = c & "    If Len(v)>10 Then" & L
-    c = c & "        Dim mn4 As String: mn4=Mid(v,pos+2,2)" & L
-    c = c & "        If IsNumeric(Mid(v,pos,4)) And mn4>=""01"" And mn4<=""12"" Then pos=pos+4" & L
-    c = c & "    End If" & L
-    c = c & "    Dim dc As String: dc=Mid(v,pos,2): pos=pos+2" & L
-    c = c & "    If Right(dc,1)<>""D"" And Right(dc,1)<>""C"" Then dc=Left(dc,1): pos=pos-1" & L
-    c = c & "    Dim amS As Integer: amS=pos" & L
-    c = c & "    Do While pos<=Len(v) And (Mid(v,pos,1)>=""0"" And Mid(v,pos,1)<=""9"" Or Mid(v,pos,1)="","") : pos=pos+1 : Loop" & L
-    c = c & "    Dim amt As String: amt=Replace(Mid(v,amS,pos-amS),"","","".""): Dim rest As String: rest=Trim(Mid(v,pos))" & L
-    c = c & "    Dim dcT As String" & L
-    c = c & "    If InStr(dc,""RD"")>0 Then dcT=""REVERSAL OF A DEBIT — a previous outgoing payment was reversed and the money returned to the account""" & L
-    c = c & "    If InStr(dc,""RC"")>0 Then dcT=""REVERSAL OF A CREDIT — a previous incoming payment was reversed and the money taken back out""" & L
-    c = c & "    If Len(dcT)=0 Then dcT=IIf(InStr(dc,""C"")>0,""CREDIT — money came INTO the account"",""DEBIT — money went OUT of the account"")" & L
-    c = c & "    Dim rf As String, dt As String: Dim ds As Integer: ds=InStr(rest,""//"")" & L
-    c = c & "    If ds>0 Then rf=Left(rest,ds-1): dt=Mid(rest,ds+2) Else rf=rest: dt=""""" & L
-    c = c & "    E61=""TRANSACTION:"" & Chr(10) & ""  Value Date: 20"" & Left(vd,2) & ""/"" & Mid(vd,3,2) & ""/"" & Right(vd,2) & Chr(10) & ""  Direction: "" & dcT & Chr(10) & ""  Amount: "" & Trim(amt) & Chr(10) & IIf(Len(rf)>0,""  Type/Reference: "" & Trim(rf) & Chr(10),"""") & IIf(Len(dt)>0,""  Bank Ref: "" & Trim(dt),"""")" & L
-    c = c & "End Function" & L & L
-
-    c = c & "Private Function E72(v As String) As String" & L
-    c = c & "    Dim r As String: r="""": Dim lns() As String: lns=Split(v,Chr(10)): Dim l As Variant" & L
-    c = c & "    For Each l In lns: Dim ln As String: ln=Trim(CStr(l))" & L
-    c = c & "        If Left(ln,1)=""/"" Then" & L
-    c = c & "            Dim sp As Integer: sp=InStr(2,ln,""/""): Dim cd As String: cd=UCase(IIf(sp>0,Mid(ln,2,sp-2),Mid(ln,2)))" & L
-    c = c & "            Select Case cd" & L
-    c = c & "                Case ""ACC"": r=r&""  ACCEPT: Beneficiary bank agrees to accept and credit the payment"" & Chr(10)" & L
-    c = c & "                Case ""INT"": r=r&""  INTERMEDIARY BANK: "" & Mid(ln,sp+1) & Chr(10)" & L
-    c = c & "                Case ""INS"": r=r&""  INSTRUCTED BY: "" & Mid(ln,sp+1) & Chr(10)" & L
-    c = c & "                Case ""RETN"": r=r&""  RETURN: This payment is being RETURNED to the original sender"" & Chr(10)" & L
-    c = c & "                Case ""REJT"": r=r&""  REJECT: This message or payment has been REJECTED"" & Chr(10)" & L
-    c = c & "                Case ""PHON"": r=r&""  PHONE NUMBER for contact: "" & Mid(ln,sp+1) & Chr(10)" & L
-    c = c & "                Case ""CLSS"": r=r&""  CLS SETTLEMENT: settled through Continuous Linked Settlement (eliminates FX settlement risk)"" & Chr(10)" & L
-    c = c & "                Case ""MANP"": r=r&""  MANUALLY PROCESSED: this item required manual handling by bank staff"" & Chr(10)" & L
-    c = c & "                Case Else: r=r&""  "" & ln & Chr(10)" & L
-    c = c & "            End Select" & L
-    c = c & "        ElseIf Len(Trim(ln))>0 Then: r=r&""  "" & ln & Chr(10): End If" & L
-    c = c & "    Next l: E72=IIf(Len(r)>0,r,v)" & L
-    c = c & "End Function" & L & L
-
-    c = c & "Private Function ED6(v As String) As String" & L
-    c = c & "    If Len(v)<6 Then ED6=v: Exit Function" & L
-    c = c & "    ED6=""Date: 20"" & Left(v,2) & ""/"" & Mid(v,3,2) & ""/"" & Right(v,2)" & L
-    c = c & "End Function" & L & L
-
-    c = c & "Private Function ED8(v As String) As String" & L
-    c = c & "    If Len(v)=8 Then ED8=""Date: "" & Left(v,4) & ""/"" & Mid(v,5,2) & ""/"" & Right(v,2): Exit Function" & L
-    c = c & "    ED8=ED6(v)" & L
-    c = c & "End Function" & L & L
-
-    c = c & "Private Function CCY(cy As String) As String" & L
-    c = c & "    Select Case UCase(cy)" & L
-    c = c & "        Case ""EUR"": CCY=""Euro"": Case ""USD"": CCY=""US Dollar"": Case ""GBP"": CCY=""British Pound""" & L
-    c = c & "        Case ""CHF"": CCY=""Swiss Franc"": Case ""JPY"": CCY=""Japanese Yen"": Case ""CAD"": CCY=""Canadian Dollar""" & L
-    c = c & "        Case ""AUD"": CCY=""Australian Dollar"": Case ""HKD"": CCY=""Hong Kong Dollar"": Case ""SGD"": CCY=""Singapore Dollar""" & L
-    c = c & "        Case ""CNY"": CCY=""Chinese Yuan"": Case ""INR"": CCY=""Indian Rupee"": Case ""AED"": CCY=""UAE Dirham""" & L
-    c = c & "        Case ""SAR"": CCY=""Saudi Riyal"": Case ""NOK"": CCY=""Norwegian Krone"": Case ""SEK"": CCY=""Swedish Krona""" & L
-    c = c & "        Case ""DKK"": CCY=""Danish Krone"": Case ""PLN"": CCY=""Polish Zloty"": Case ""TRY"": CCY=""Turkish Lira""" & L
-    c = c & "        Case ""ZAR"": CCY=""South African Rand"": Case ""BRL"": CCY=""Brazilian Real"": Case ""MXN"": CCY=""Mexican Peso""" & L
-    c = c & "        Case ""NZD"": CCY=""New Zealand Dollar"": Case ""THB"": CCY=""Thai Baht"": Case ""MYR"": CCY=""Malaysian Ringgit""" & L
-    c = c & "        Case ""KWD"": CCY=""Kuwaiti Dinar"": Case ""BHD"": CCY=""Bahraini Dinar"": Case ""QAR"": CCY=""Qatari Riyal""" & L
-    c = c & "        Case ""EGP"": CCY=""Egyptian Pound"": Case ""NGN"": CCY=""Nigerian Naira"": Case ""PKR"": CCY=""Pakistani Rupee""" & L
-    c = c & "        Case Else: CCY=""ISO currency""" & L
-    c = c & "    End Select" & L
-    c = c & "End Function" & L
-
-    BuildParserCode = c
-End Function
-
-' ================================================================
-' PDF READER CODE — returned as string, injected into new file
-' ================================================================
-Private Function BuildPDFCode() As String
-    Dim L As String: L = Chr(10)
-    Dim c As String
-
-    c = "Option Explicit" & L & L
-    c = c & "Public Sub ImportFromPDF()" & L
-    c = c & "    Dim pdfPath As String" & L
-    c = c & "    pdfPath = Application.GetOpenFilename(""PDF Files (*.pdf),*.pdf"",,""Select your SWIFT PDF file"")" & L
-    c = c & "    If pdfPath = ""False"" Then Exit Sub" & L
-    c = c & "    Dim ws As Worksheet" & L
-    c = c & "    For Each ws In ThisWorkbook.Sheets" & L
-    c = c & "        If ws.Name = ""PARSER"" Then Exit For" & L
-    c = c & "    Next ws" & L
-    c = c & "    ws.Range(""B201"").Value = ""  Reading PDF — please wait..."": ws.Range(""B201"").Interior.Color = RGB(255,243,205): DoEvents" & L
-    c = c & "    Dim txt As String: txt = """"" & L
-    c = c & "    If txt = """" Then txt = TW(pdfPath)" & L
-    c = c & "    If txt = """" Then txt = TA(pdfPath)" & L
-    c = c & "    If txt = """" Then txt = TS(pdfPath)" & L
-    c = c & "    If txt = """" Then txt = TP(pdfPath)" & L
-    c = c & "    If Len(Trim(txt)) = 0 Then: Call SM(ws, pdfPath): Exit Sub: End If" & L
-    c = c & "    Dim sw As String: sw = FS(txt)" & L
-    c = c & "    ws.Range(""B5"").Value = IIf(Len(Trim(sw))>0, sw, txt)" & L
-    c = c & "    ws.Range(""B5"").Font.Color = RGB(13,27,42)" & L
-    c = c & "    ws.Range(""B201"").Value = ""  PDF loaded successfully. Now click DECODE THIS MESSAGE.""" & L
-    c = c & "    ws.Range(""B201"").Interior.Color = RGB(213,245,227)" & L
-    c = c & "    ws.Range(""B202"").Value = ""  PDF source: "" & pdfPath" & L
-    c = c & "    MsgBox ""PDF imported!"" & Chr(13) & Chr(13) & ""The message has been loaded into the yellow box."" & Chr(13) & ""Now click the green  DECODE THIS MESSAGE  button."", vbInformation, ""PDF Loaded OK""" & L
-    c = c & "End Sub" & L & L
-
-    c = c & "Private Function TW(p As String) As String" & L
-    c = c & "    On Error GoTo F: Dim wA As Object: wA=CreateObject(""Word.Application""): wA.Visible=False" & L
-    c = c & "    Dim wD As Object: wD=wA.Documents.Open(Filename:=p,Format:=7,ConfirmConversions:=False,ReadOnly:=True)" & L
-    c = c & "    Dim r As String: r=wD.Range.Text: wD.Close False: wA.Quit" & L
-    c = c & "    If Len(Trim(r))>10 Then TW=r: Exit Function" & L
-    c = c & "F:  On Error GoTo 0: TW=""""" & L
-    c = c & "End Function" & L & L
-
-    c = c & "Private Function TA(p As String) As String" & L
-    c = c & "    On Error GoTo F: Dim aD As Object: aD=CreateObject(""AcroExch.PDDoc"")" & L
-    c = c & "    If Not aD.Open(p) Then GoTo F" & L
-    c = c & "    Dim r As String: r="""": Dim i As Integer" & L
-    c = c & "    For i=0 To aD.GetNumPages-1: Dim pg As Object: pg=aD.AcquirePage(i)" & L
-    c = c & "        Dim hl As Object: hl=CreateObject(""AcroExch.HiliteList""): hl.Add 0,9999" & L
-    c = c & "        Dim sl As Object: sl=pg.CreatePageHilite(hl)" & L
-    c = c & "        If Not IsNull(sl) Then Dim w As Integer: For w=0 To sl.GetNumText-1: r=r&sl.GetText(w): Next w" & L
-    c = c & "        r=r&Chr(10): Next i: aD.Close" & L
-    c = c & "    If Len(Trim(r))>10 Then TA=r: Exit Function" & L
-    c = c & "F:  On Error GoTo 0: TA=""""" & L
-    c = c & "End Function" & L & L
-
-    c = c & "Private Function TS(p As String) As String" & L
-    c = c & "    On Error GoTo F: Dim tmp As String: tmp=Environ(""TEMP"") & ""\swpdf.txt""" & L
-    c = c & "    Shell ""cmd /c pdftotext -layout """""""  & p & """"""""  & "" """" & tmp,vbHide: Application.Wait Now+TimeValue(""00:00:03"")" & L
-    c = c & "    If Dir(tmp)="""" Then GoTo F" & L
-    c = c & "    Dim f As Integer: f=FreeFile: Dim r As String: r="""": Dim ln As String" & L
-    c = c & "    Open tmp For Input As #f: Do While Not EOF(f): Line Input #f,ln: r=r&ln&Chr(10): Loop: Close #f" & L
-    c = c & "    On Error Resume Next: Kill tmp: On Error GoTo 0" & L
-    c = c & "    If Len(Trim(r))>10 Then TS=r: Exit Function" & L
-    c = c & "F:  On Error GoTo 0: TS=""""" & L
-    c = c & "End Function" & L & L
-
-    c = c & "Private Function TP(p As String) As String" & L
-    c = c & "    On Error GoTo F: Dim tmp As String: tmp=Environ(""TEMP"") & ""\swps.txt""" & L
-    c = c & "    Dim ps As String: ps=""powershell -WindowStyle Hidden -Command ""&{$b=[IO.File]::ReadAllBytes('"" & p & ""');$t=[Text.Encoding]::UTF8.GetString($b);$t|Out-File '"" & tmp & ""' -Enc utf8}""" & L
-    c = c & "    Shell ps,vbHide: Application.Wait Now+TimeValue(""00:00:04"")" & L
-    c = c & "    If Dir(tmp)="""" Then GoTo F" & L
-    c = c & "    Dim f As Integer: f=FreeFile: Dim raw As String: raw="""": Dim ln As String" & L
-    c = c & "    Open tmp For Input As #f: Do While Not EOF(f): Line Input #f,ln: raw=raw&ln&Chr(10): Loop: Close #f" & L
-    c = c & "    On Error Resume Next: Kill tmp: On Error GoTo 0" & L
-    c = c & "    Dim cl As String: cl="""": Dim ii As Long: Dim ch As String: Dim ac As Integer" & L
-    c = c & "    For ii=1 To Len(raw): ch=Mid(raw,ii,1): ac=Asc(ch): If (ac>=32 And ac<=126) Or ac=10 Or ac=13 Then cl=cl&ch: End If: Next ii" & L
-    c = c & "    If Len(Trim(cl))>10 Then TP=cl: Exit Function" & L
-    c = c & "F:  On Error GoTo 0: TP=""""" & L
-    c = c & "End Function" & L & L
-
-    c = c & "Private Function FS(txt As String) As String" & L
-    c = c & "    Dim sp As Long: sp=InStr(txt,""{1:""): If sp=0 Then sp=InStr(txt,""{2:""): If sp=0 Then sp=InStr(txt,""{4:"")" & L
-    c = c & "    Dim ep As Long: ep=InStr(txt,""-}""): If ep>0 Then ep=ep+2" & L
-    c = c & "    If ep=0 Then Dim p5 As Long: p5=InStr(txt,""{5:""): If p5>0 Then ep=InStr(p5,txt,""}}"" )+1" & L
-    c = c & "    If sp>0 And ep>sp Then FS=Mid(txt,sp,ep-sp): Exit Function" & L
-    c = c & "    If sp>0 Then FS=Mid(txt,sp): Exit Function" & L
-    c = c & "    Dim fp As Long: fp=InStr(txt,"":20:""): If fp=0 Then fp=InStr(txt,"":32A:""): If fp=0 Then fp=InStr(txt,"":40A:""): If fp=0 Then fp=InStr(txt,"":60F:"")" & L
-    c = c & "    If fp>0 Then FS=Mid(txt,fp) Else FS=""""" & L
-    c = c & "End Function" & L & L
-
-    c = c & "Private Sub SM(ws As Worksheet, p As String)" & L
-    c = c & "    MsgBox ""Automatic PDF reading was not possible."" & Chr(13) & Chr(13) & ""FILE: "" & p & Chr(13) & Chr(13) & ""EASY MANUAL STEPS:"" & Chr(13) & ""1. Open the PDF in Adobe Reader, Edge or Chrome"" & Chr(13) & ""2. Press CTRL+A  (select all text)"" & Chr(13) & ""3. Press CTRL+C  (copy)"" & Chr(13) & ""4. Click the yellow box on the PARSER sheet"" & Chr(13) & ""5. Press CTRL+V  (paste)"" & Chr(13) & ""6. Click  DECODE THIS MESSAGE"" & Chr(13) & Chr(13) & ""NOTE: If the PDF is a scanned image you need OCR software first."", vbInformation, ""Manual Step Required""" & L
-    c = c & "    ws.Range(""B201"").Value = ""  Manual paste required — open PDF, CTRL+A, CTRL+C, paste into yellow box, then click DECODE.""" & L
-    c = c & "    ws.Range(""B201"").Interior.Color = RGB(255,243,205)" & L
-    c = c & "End Sub" & L
-
-    BuildPDFCode = c
-End Function
+Below is the final SOP document in a copy-ready format.
+
+STANDARD OPERATING PROCEDURE (SOP)
+
+1. Document Header
+
+Title: Belgium GCP Control – Reclaim Status Monitoring and Validation
+SOP Number: GCP-BE-001
+Version: 1.0
+Effective Date: TBD
+Department: Tax Reclaim Operations
+Process Owner: Tax Reclaim Operations Manager
+Classification: Internal Use Only
+
+⸻
+
+2. Purpose
+
+The purpose of this procedure is to perform the Global Control Process (GCP) review for Belgium tax reclaim cases maintained within STAR. The control ensures reclaim statuses remain accurate, aged cases are identified and escalated, and all stakeholders provide timely updates to support effective reclaim processing and reporting.
+
+The control is performed semi-annually and covers status validation, ageing analysis, stakeholder follow-up, processing backlog review, and status correction activities.
+
+Control Methodology
+
+The control utilizes two separate STAR reports:
+
+1. A Primary Reclaim Population Report, which serves as the source population for the control and contains all reclaim records within scope, including records that may not have linked payment lines or beneficiary references.
+2. A Detailed Tax Form User Report, which provides additional reclaim details such as beneficiary information, event details, and address information.
+
+As the Detailed Tax Form User Report may not contain all records present in the Primary Reclaim Population Report, a reconciliation process must be performed to ensure population completeness before any control review activities commence.
+
+⸻
+
+3. Scope
+
+This procedure applies to all personnel responsible for performing and validating the Belgium GCP Control.
+
+Included Market
+
+* Belgium
+
+Included System
+
+* STAR
+
+Included Statuses
+
+* EAR Issuer Tax Authority
+* EAR Subcustodian
+* Awaiting for Refund
+* Blocked by Tax Authority
+* Invalid
+* Out of Delay
+* Pending
+* Pending on Client Side
+* Pending Solved
+* Received Authorities
+* Received by Branch
+* Received by Hub
+* Sent to Hub
+* Submitted to Tax Authority
+* Valid
+* Valid Checked
+
+Frequency
+
+The GCP Control shall be performed twice per year (Semi-Annually).
+
+⸻
+
+4. Definitions
+
+Term	Definition
+GCP	Global Control Process
+STAR	Tax Reclaim Management Application
+LC	Local Custody
+GC	Global Custody
+Account Manager	Individual responsible for client communication and document coordination
+Reclaim	Tax reclaim case maintained within STAR
+EAR	Exception Awaiting Response
+
+⸻
+
+5. Roles & Responsibilities
+
+Performer
+
+* Extract reports from STAR.
+* Reconcile reclaim populations.
+* Review all applicable statuses.
+* Identify aged reclaims.
+* Prepare follow-up files.
+* Contact relevant stakeholders.
+* Track responses and status updates.
+* Complete control documentation.
+
+Validator
+
+* Independently review the completed control.
+* Verify population completeness.
+* Verify ageing assessments.
+* Validate stakeholder follow-ups.
+* Confirm control completion and sign-off.
+
+⸻
+
+6. Prerequisites
+
+Prior to performing the control, the following must be available:
+
+1. STAR access.
+2. Belgium reclaim access rights.
+3. GCP working file.
+4. Outlook/email access.
+5. Control calendar and reporting schedule.
+
+⸻
+
+7. Procedure – Step-by-Step
+
+Step 1 – Access STAR
+
+Action: Log in to STAR.
+
+Responsible Person: Performer
+
+Input Required: STAR credentials
+
+Output Produced: Access to STAR homepage.
+
+⸻
+
+Step 2 – Generate Primary Reclaim Population Report
+
+Action: Navigate to Reclaim → Tax Form Management.
+
+Responsible Person: Performer
+
+Output Produced: Tax Form Management search screen.
+
+⸻
+
+Step 3 – Apply Search Criteria
+
+Populate the following criteria:
+
+Field	Value
+Source Investment Country	Belgium
+
+Select the following Form Statuses:
+
+* EAR Issuer Tax Authority
+* EAR Subcustodian
+* Awaiting for Refund
+* Blocked by Tax Authority
+* Invalid
+* Out of Delay
+* Pending
+* Pending on Client Side
+* Pending Solved
+* Received Authorities
+* Received by Branch
+* Received by Hub
+* Sent to Hub
+* Submitted to Tax Authority
+* Valid
+* Valid Checked
+
+Click Apply.
+
+⸻
+
+Step 4 – Generate User Report
+
+Select all returned records and generate a User Report.
+
+Output Produced: Primary Reclaim Population Report.
+
+Exception
+
+If STAR returns more than 100,000 records and prevents report generation:
+
+1. Split the statuses into smaller groups.
+2. Generate multiple reports.
+3. Combine all reports into a single Primary Reclaim Population Report.
+
+⸻
+
+Step 5 – Generate Detailed Tax Form User Report
+
+Navigate to:
+
+Reporting → Report Generation → User Report
+
+Populate:
+
+Field	Value
+Report Type	Tax Form User Report
+Tax Procedure	Standard
+Issuer Country	Belgium
+
+Select the same status population used in the Primary Reclaim Population Report.
+
+Execute the report and export the results.
+
+Output Produced: Detailed Tax Form User Report.
+
+⸻
+
+Step 6 – Reconcile Report Populations
+
+Compare the Primary Reclaim Population Report against the Detailed Tax Form User Report using Form Reference.
+
+XLOOKUP or equivalent reconciliation methodology may be used.
+
+⸻
+
+Step 7 – Identify Missing Reclaims
+
+Identify reclaims present in the Primary Reclaim Population Report but absent from the Detailed Tax Form User Report.
+
+Output Produced: Missing Form Reference list.
+
+⸻
+
+Step 8 – Retrieve Missing Reclaims
+
+Navigate to:
+
+Reporting → Report Generation → User Report
+
+Select:
+
+Field	Value
+Report Type	Tax Form User Report
+
+Enter the missing Form References.
+
+Remove:
+
+* Issuer Country
+* Tax Procedure
+* Form Status
+
+Generate the report.
+
+Output Produced: Missing Reclaim Detail Report.
+
+⸻
+
+Step 9 – Build Final GCP Working Population
+
+Append the retrieved missing reclaims into the Detailed Tax Form User Report.
+
+No separate missing reclaim worksheet shall be maintained.
+
+Output Produced: Final GCP Working Population.
+
+⸻
+
+Step 10 – Validate Population Completeness
+
+Verify:
+
+1. Total reclaim count matches the Primary Reclaim Population Report.
+2. Missing reclaims have been added.
+3. No duplicate Form References exist.
+4. All in-scope reclaims are included.
+
+⸻
+
+Status Review Procedures
+
+Step 11 – Review Submitted Reclaims Awaiting External Updates
+
+Applicable Statuses
+
+* EAR Issuer Tax Authority
+* EAR Subcustodian
+* Received Authorities
+* Submitted to Tax Authority
+
+Ageing Threshold
+
+365 Days
+
+Actions
+
+1. Review STAR comments and reclaim history.
+2. Verify no status update has occurred for 365 days.
+3. Determine whether follow-up is required with:
+    * Tax Authority
+    * Issuer
+    * Subcustodian
+4. Add qualifying reclaims to the follow-up file.
+5. Send the follow-up file to the responsible team.
+6. Monitor completion and status updates.
+
+Additional Validation
+
+For EAR Subcustodian status, review comments before inclusion to confirm the reclaim is genuinely awaiting subcustodian action.
+
+GC / LC Validation
+
+Before issuing the file:
+
+1. Identify LC and GC reclaims.
+2. Retain LC claims where applicable.
+3. Remove duplicate LC references where the reclaim is already represented through a GC reclaim.
+
+⸻
+
+Step 12 – Review Awaiting for Refund Status
+
+Ageing Threshold
+
+90 Days
+
+Actions
+
+1. Review refund history.
+2. Confirm refund processing status.
+3. Identify reclaims with no progress for 90 days.
+4. Include qualifying cases in the follow-up file.
+5. Contact the responsible refund team.
+
+⸻
+
+Step 13 – Review Blocked by Tax Authority Status
+
+Actions
+
+1. Review STAR comments.
+2. Verify the request from the tax authority.
+3. Verify a response was provided.
+4. Confirm follow-up actions were completed.
+5. Escalate unresolved cases as required.
+
+⸻
+
+Step 14 – Review Invalid and Out of Delay Statuses
+
+Actions
+
+1. Review reclaim comments.
+2. Identify reclaims already submitted despite current status.
+3. Identify status discrepancies.
+4. Add qualifying reclaims to the follow-up file.
+5. Request status correction.
+
+⸻
+
+Step 15 – Review Pending and Pending on Client Side Statuses
+
+Ageing Threshold
+
+90 Days
+
+Actions
+
+1. Review outstanding requirements.
+2. Prepare follow-up file.
+3. Contact Account Managers.
+4. Request client updates.
+5. Monitor responses and status progression.
+
+⸻
+
+Step 16 – Review Processing Queue Statuses
+
+Applicable Statuses
+
+* Pending Solved
+* Received by Hub
+* Valid Checked
+
+Internal Processing SLA
+
+16 Days
+
+GCP Escalation Threshold
+
+60 Days
+
+Actions
+
+1. Review processing queues.
+2. Identify reclaims aged more than 60 days.
+3. Prioritize aged cases.
+4. Complete processing, review and dispatch activities.
+
+⸻
+
+Step 17 – Review Received by Branch Status
+
+Actions
+
+1. Verify successful reclaim integration.
+2. Confirm whether the reclaim should have progressed to Received by Hub.
+3. Identify missed status updates.
+4. Update or request correction as required.
+
+⸻
+
+Step 18 – Review Sent to Hub Status
+
+Ageing Threshold
+
+15 Days
+
+Actions
+
+1. Verify document receipt.
+2. Confirm whether status progression was missed.
+3. If received:
+    * Update status.
+    * Record received date.
+    * Update SR details.
+    * Record comments.
+4. If not received:
+    * Contact Account Manager.
+    * Request investigation and update.
+
+⸻
+
+Step 19 – Review Valid Status
+
+Actions
+
+1. Filter Valid status population.
+2. Filter Branch = Paris.
+3. Filter Local Custody reclaims.
+4. Exclude records outside Belgium processing team ownership.
+5. Review remaining reclaims for ageing and processing delays.
+
+⸻
+
+8. Quality & Compliance Checks
+
+1. Confirm all selected statuses were reviewed.
+2. Confirm population reconciliation was completed.
+3. Confirm all ageing criteria were applied correctly.
+4. Confirm follow-up files were issued.
+5. Confirm duplicate LC/GC reporting was removed.
+6. Confirm evidence of review is retained.
+7. Confirm Validator review and sign-off is completed.
+
+⸻
+
+9. Exception Handling & Escalation Path
+
+Exception	Escalation
+STAR reporting issues	Team Manager
+Missing reclaim information	Account Manager
+Long outstanding tax authority cases	Responsible Tax Team
+Refund delays	Refund Processing Team
+Processing backlog	Processing Team Lead
+Status update discrepancies	Process Owner
+
+⸻
+
+10. References
+
+* STAR Application
+* Belgium Reclaim Processing Procedures
+* GCP Control Calendar
+* Outlook Email System
+* Tax Form User Report
+* Reclaim User Report
+
+⸻
+
+11. Revision History
+
+Version	Date	Description	Author
+1.0	TBD	Initial SOP Creation	TBD
+
+This version is sufficiently structured for operational use, audit review, validator training, and control execution. The only items left for you to populate are document control fields (effective date, owner, author, approval details, page numbering, and any internal document references).
