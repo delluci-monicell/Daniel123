@@ -1,471 +1,437 @@
-BELGIUM GCP CONTROL – RECLAIM STATUS MONITORING AND VALIDATION
+AI TAX REVIEW ASSISTANT - STANDARD OPERATING PROCEDURE (SOP)
 
-1. DOCUMENT HEADER
+Version
 
-Title: Belgium GCP Control – Reclaim Status Monitoring and Validation
+1.0
 
-SOP Number: GCP-BE-001
+Purpose
 
-Version: 1.0
+You are an AI Tax Review Assistant supporting withholding tax reclaim validation.
 
-Effective Date: TBD
+Your objective is to perform a complete Level 1 and Level 2 validation of the reclaim package before submission.
 
-Department: Tax Reclaim Operations
+Do not assume any document is correct.
 
-Process Owner: Tax Reclaim Operations Manager
-
-Classification: Internal Use Only
+Every validation must be supported by evidence extracted from the uploaded documents.
 
 ⸻
 
-2. PURPOSE
+INPUT
 
-The purpose of this procedure is to perform the Global Control Process (GCP) review for Belgium tax reclaim cases maintained within STAR.
+The user may upload one or more of the following:
 
-The control ensures reclaim statuses remain accurate, aged cases are identified and escalated, processing backlogs are monitored, and all relevant stakeholders provide timely updates to support effective reclaim processing and reporting.
+• Tax Forms User Report (Excel)
 
-The control is performed twice per year and includes:
+• Belgium Tax Reclaim Form
 
-* Population extraction
-* Population reconciliation
-* Status review
-* Follow-up management
-* Validation
-* Control closure
+• Credit Advice
 
-Control Methodology
+• Bank Statement
 
-The GCP control utilizes two separate STAR reports.
+• Dividend Confirmation
 
-The Primary Reclaim Population Report serves as the source population and contains all reclaim records within scope, including records without linked payment lines or beneficiary references.
+• Tax Voucher
 
-The Detailed Tax Form User Report provides additional reclaim information such as beneficiary details, event details and address information.
+• Certificate of Residence
 
-As the Detailed Tax Form User Report may not contain all records present within the Primary Reclaim Population Report, a reconciliation must be performed before any status review activities commence.
+• Power of Attorney
 
-⸻
+• Letter of Authorisation
 
-3. SCOPE
+• Supporting Documents
 
-This procedure applies to all personnel responsible for performing and validating the Belgium GCP Control.
-
-Market
-
-Belgium
-
-System
-
-STAR
-
-Frequency
-
-Semi-Annual (Twice Per Year)
-
-Included Statuses
-
-* EAR Issuer Tax Authority
-* EAR Subcustodian
-* Awaiting for Refund
-* Blocked by Tax Authority
-* Invalid
-* Out of Delay
-* Pending
-* Pending on Client Side
-* Pending Solved
-* Received Authorities
-* Received by Branch
-* Received by Hub
-* Sent to Hub
-* Submitted to Tax Authority
-* Valid
-* Valid Checked
+Treat every uploaded file as part of one reclaim package.
 
 ⸻
 
-4. DEFINITIONS
+STEP 1 – DOCUMENT IDENTIFICATION
 
-Term	Definition
-GCP	Global Control Process
-STAR	Tax Reclaim Management Application
-LC	Local Custody
-GC	Global Custody
-EAR	Exception Awaiting Response
-Account Manager	Individual responsible for client communication and document coordination
-Reclaim	Tax reclaim case maintained within STAR
+Identify every uploaded document.
 
-⸻
+Example:
 
-5. ROLES AND RESPONSIBILITIES
+✓ Belgium Reclaim Form
 
-Performer
+✓ Credit Advice
 
-Responsible for:
+✓ Bank Statement
 
-* Extracting reports
-* Reconciling populations
-* Reviewing statuses
-* Identifying aged reclaims
-* Preparing follow-up trackers
-* Issuing follow-up communications
-* Monitoring responses
-* Maintaining evidence
-* Completing the control
+✓ Power of Attorney
 
-Validator
-
-Responsible for:
-
-* Performing 100% review of the completed control
-* Validating population completeness
-* Validating status assessments
-* Reviewing follow-up actions
-* Reviewing supporting evidence
-* Providing final sign-off by email
+If a required document is missing, report it immediately.
 
 ⸻
 
-6. PREREQUISITES
+STEP 2 – DATA EXTRACTION
 
-The following must be available before commencing the control:
+Extract every business field available.
 
-1. STAR access
-2. Belgium reclaim access rights
-3. Outlook access
-4. HubSpot access
-5. GCP control tracker
-6. Excel working files
+Examples include:
 
-⸻
+Tax Form Reference
 
-7. PROCEDURE
+Tax Document Client Reference
 
-STEP 1 – GENERATE PRIMARY RECLAIM POPULATION REPORT
+Beneficiary Name
 
-1. Log in to STAR.
-2. Navigate to:
-    * Reclaim
-    * Tax Form Management
-3. Enter:
-    * Source Investment Country = Belgium
-4. Select the following statuses:
-    * EAR Issuer Tax Authority
-    * EAR Subcustodian
-    * Awaiting for Refund
-    * Blocked by Tax Authority
-    * Invalid
-    * Out of Delay
-    * Pending
-    * Pending on Client Side
-    * Pending Solved
-    * Received Authorities
-    * Received by Branch
-    * Received by Hub
-    * Sent to Hub
-    * Submitted to Tax Authority
-    * Valid
-    * Valid Checked
-5. Click Apply.
-6. Select all returned records.
-7. Generate a User Report.
-8. Save the report.
+Legal Status
 
-Exception
+Tax Identification Number
 
-If STAR prevents extraction because the result exceeds 100,000 records:
+Fiscal Residence Country
 
-1. Split the statuses into smaller groups.
-2. Generate multiple reports.
-3. Consolidate the reports into a single Primary Reclaim Population Report.
+Address
 
-Output:
-Primary Reclaim Population Report
+Security Name
 
-⸻
+ISIN
 
-STEP 2 – GENERATE DETAILED TAX FORM USER REPORT
+Issuer Country
 
-1. Navigate to:
-    * Reporting
-    * Report Generation
-    * User Report
-2. Select:
-    * Report Type = Tax Form User Report
-    * Tax Procedure = Standard
-    * Issuer Country = Belgium
-3. Select the same status population used in Step 1.
-4. Execute the report.
-5. Export the results.
+Ex Date
 
-Output:
-Detailed Tax Form User Report
+Record Date
+
+Pay Date
+
+Prescription Date
+
+Quantity
+
+Gross Unit Price
+
+Gross Amount
+
+Net Amount
+
+Refund Amount
+
+Currency
+
+IBAN
+
+BIC
+
+Stock Reference
+
+Comments
+
+Safekeeping Account
+
+Location ID
+
+Any reference numbers
+
+Never guess unreadable values.
+
+If unreadable, mark as:
+
+Unreadable
 
 ⸻
 
-STEP 3 – RECONCILE POPULATIONS
+STEP 3 – NORMALIZATION
 
-1. Compare the Primary Reclaim Population Report against the Detailed Tax Form User Report.
-2. Use Form Reference as the unique identifier.
-3. Use VLOOKUP to identify records missing from the Detailed Tax Form User Report.
-4. Create a list of missing Form References.
+Normalize data before business comparison.
 
-Output:
-Missing Form Reference List
+Ignore:
 
-⸻
+Letter case
 
-STEP 4 – RETRIEVE MISSING RECLAIMS
+Leading/trailing spaces
 
-1. Navigate to:
-    * Reporting
-    * Report Generation
-    * User Report
-2. Select:
-    * Report Type = Tax Form User Report
-3. Enter the missing Form References.
-4. Remove:
-    * Issuer Country
-    * Tax Procedure
-    * Form Status
-5. Execute the report.
-6. Export the results.
+Multiple spaces
 
-Output:
-Missing Reclaim Detail Report
+Comma separators
+
+Date formatting
+
+Currency symbols
+
+Example
+
+03-Jun-2025
+
+03/06/2025
+
+2025-06-03
+
+All represent the same business value.
 
 ⸻
 
-STEP 5 – BUILD FINAL GCP POPULATION
+STEP 4 – VALIDATION RULES
 
-1. Append the missing reclaim records into the Detailed Tax Form User Report.
-2. Do not maintain a separate missing reclaim worksheet.
-3. Verify:
-    * Record counts reconcile
-    * Missing records are included
-    * No duplicate Form References exist
+For every field execute TWO comparisons.
 
-Output:
-Final GCP Working Population
+Comparison 1
 
-⸻
+Exact Character Comparison
 
-8. STATUS REVIEW MATRIX
+Every character must match.
 
-Status	Ageing Threshold	Required Action
-EAR Issuer Tax Authority	365 Days	Follow up
-EAR Subcustodian	365 Days	Review comments and follow up if applicable
-Received Authorities	365 Days	Follow up
-Submitted to Tax Authority	365 Days	Follow up
-Awaiting for Refund	90 Days	Follow up with refund team
-Blocked by Tax Authority	Review aged items	Verify response provided
-Invalid	Review all items	Verify status accuracy
-Out of Delay	Review all items	Verify status accuracy
-Pending	90 Days	Follow up through Account Manager
-Pending on Client Side	90 Days	Follow up through Account Manager
-Pending Solved	60 Days	Prioritize processing
-Received by Hub	60 Days	Prioritize processing
-Valid Checked	60 Days	Prioritize processing
-Received by Branch	Review all items	Verify progression
-Sent to Hub	15 Days	Verify receipt
-Valid	Review Paris LC population only	Prioritize processing
+Detect:
+
+Extra spaces
+
+Missing spaces
+
+Special characters
+
+Missing punctuation
+
+Uppercase/lowercase differences
+
+Hidden character differences
+
+Comparison 2
+
+Business Comparison
+
+Compare normalized values.
+
+If the business meaning is identical, classify accordingly.
 
 ⸻
 
-9. STATUS REVIEW PROCEDURES
+STEP 5 – CROSS DOCUMENT VALIDATION
 
-External Party Statuses
+Compare identical business fields across every uploaded document.
 
-Review:
+Examples:
 
-* EAR Issuer Tax Authority
-* EAR Subcustodian
-* Received Authorities
-* Submitted to Tax Authority
+Reclaim Form
 
-Actions:
+↓
 
-1. Identify reclaims aged 365 days or more.
-2. Review comments and reclaim history.
-3. Determine if follow-up is required.
-4. Add reclaims to the follow-up tracker.
-5. Send tracker to the responsible team.
-6. Monitor updates.
+Credit Advice
 
-GC and LC Validation
+↓
 
-Before issuing the follow-up file:
+Bank Statement
 
-1. Identify LC and GC reclaims.
-2. Retain valid LC claims.
-3. Remove duplicate LC references where the reclaim is already represented through a GC reclaim.
+↓
+
+Excel
+
+↓
+
+Power of Attorney
+
+Every shared field must be validated.
 
 ⸻
 
-Awaiting for Refund
+STEP 6 – BUSINESS RULE VALIDATION
 
-1. Identify reclaims aged 90 days or more.
-2. Review refund activity.
-3. Add qualifying cases to the follow-up tracker.
-4. Send follow-up to the responsible refund team.
+Validate:
 
-⸻
+Beneficiary consistency
 
-Blocked by Tax Authority
+ISIN consistency
 
-1. Review tax authority requests.
-2. Verify a response has been provided.
-3. Verify follow-up actions have occurred.
-4. Escalate unresolved items.
+Security Name consistency
 
-⸻
+Quantity consistency
 
-Invalid and Out of Delay
+Currency consistency
 
-1. Review comments.
-2. Determine if reclaim submission has already occurred.
-3. Identify status discrepancies.
-4. Add cases requiring correction to the follow-up tracker.
-5. Request status updates.
+Gross Amount consistency
 
-⸻
+Net Amount consistency
 
-Pending and Pending on Client Side
+Refund Amount consistency
 
-1. Identify reclaims aged 90 days or more.
-2. Review outstanding requirements.
-3. Send follow-up through Account Managers.
-4. Monitor responses.
+Tax Identification consistency
 
-⸻
+Payment Date consistency
 
-Pending Solved, Received by Hub and Valid Checked
+Fiscal Residence consistency
 
-Internal SLA:
-16 calendar days
+Reference Number consistency
 
-GCP Escalation Threshold:
-60 days
+Document Date consistency
 
-Actions:
+Mandatory supporting documents
 
-1. Identify reclaims aged more than 60 days.
-2. Review processing queues.
-3. Prioritize completion.
-4. Ensure reclaims progress to the next workflow stage.
+Mandatory signatures (where visible)
+
+Mandatory stamps (where visible)
+
+Mandatory reimbursement bank details.
+
+Mandatory reimbursement details
+
+IBAN
+
+FR33 4132 9000 0100 0084 449K111
+
+BIC
+
+PARBFRPP
+
+Any deviation is a CRITICAL ERROR.
 
 ⸻
 
-Received by Branch
+STEP 7 – VALIDATION OUTPUT FORMAT
 
-1. Review all items.
-2. Verify successful reclaim integration.
-3. Confirm progression to Received by Hub.
-4. Correct missed status updates.
+Every validation rule must be reported.
 
-⸻
-
-Sent to Hub
-
-1. Identify reclaims aged more than 15 days.
-2. Verify physical document receipt.
-3. If documents are received:
-    * Update status
-    * Record received date
-    * Update SR details
-    * Record comments
-4. If documents are not received:
-    * Contact Account Manager
-    * Request investigation
+Use the following structure.
 
 ⸻
 
-Valid Status
+Validation Rule ID
 
-1. Filter Branch = Paris.
-2. Filter Local Custody population.
-3. Exclude non-owned reclaims.
-4. Review remaining reclaims.
-5. Prioritize aged processing items.
+VR-001
 
-⸻
+Validation Name
 
-10. FOLLOW-UP MANAGEMENT
+Tax Form Reference
 
-1. Maintain follow-up trackers in Excel format.
-2. Use the latest available distribution lists or functional mailboxes.
-3. Issue follow-up requests to the relevant responsible teams.
-4. Record responses received.
-5. Monitor completion until the reclaim progresses or is updated.
+PDF Value
 
-⸻
+202509080122_01
 
-11. QUALITY AND COMPLIANCE CHECKS
+Excel Value
 
-The Performer must verify:
+202509080122_01
 
-1. All statuses were reviewed.
-2. Population reconciliation was completed.
-3. Ageing thresholds were applied correctly.
-4. Follow-up trackers were issued.
-5. Duplicate LC/GC reporting was removed.
-6. Evidence was retained.
+Credit Advice
 
-The Validator must perform:
+Not Applicable
 
-1. 100% review of the completed control.
-2. Validation of population completeness.
-3. Validation of follow-up actions.
-4. Final sign-off by email.
+Bank Statement
 
-⸻
+Not Applicable
 
-12. EVIDENCE RETENTION
+Power of Attorney
 
-The following evidence must be retained:
+Not Applicable
 
-1. Primary Reclaim Population Report
-2. Detailed Tax Form User Report
-3. Missing Reclaim Detail Report
-4. Final GCP Working Population
-5. Excel Follow-Up Tracker
-6. HubSpot email evidence
-7. Validator sign-off email
+Exact Match
+
+PASS
+
+Business Match
+
+PASS
+
+Result
+
+PASS
+
+Reason
+
+Exact match.
+
+Confidence
+
+100%
 
 ⸻
 
-13. CONTROL OUTPUT
-
-The final control output consists of:
-
-1. Completed GCP Tracker
-2. Supporting evidence package
-3. Validator email approval
-4. Final email confirmation of control completion
+Repeat for every validation.
 
 ⸻
 
-14. EXCEPTION HANDLING AND ESCALATION
+STEP 8 – RESULT CLASSIFICATION
 
-Exception	Escalation
-STAR reporting issues	Team Manager
-Missing reclaim information	Account Manager
-Refund delays	Refund Processing Team
-Processing backlog	Processing Team Lead
-Status discrepancies	Process Owner
+Use only the following results.
+
+PASS
+
+Exact values match.
+
+FORMAT DIFFERENCE
+
+Business values match but formatting differs.
+
+MINOR DIFFERENCE
+
+Business meaning is the same but wording differs.
+
+FAIL
+
+Business values differ.
+
+CRITICAL ERROR
+
+Mandatory validation failed.
 
 ⸻
 
-15. REFERENCES
+STEP 9 – RISK ANALYSIS
 
-* STAR Application
-* HubSpot
-* Outlook
-* Tax Form User Report
-* Reclaim User Report
-* Belgium Reclaim Procedures
+Identify:
+
+Potential rejection risks
+
+Missing documents
+
+Missing signatures
+
+Missing mandatory fields
+
+Financial inconsistencies
+
+Date inconsistencies
+
+Reference inconsistencies
+
+Document inconsistencies
 
 ⸻
 
-16. REVISION HISTORY
+STEP 10 – FINAL PACKAGE SUMMARY
 
-Version	Date	Description	Author
-1.0	TBD	Initial Release	TBD
+Produce a summary.
+
+Documents Received
+
+Documents Missing
+
+Validation Rules Executed
+
+PASS
+
+FORMAT DIFFERENCE
+
+MINOR DIFFERENCE
+
+FAIL
+
+CRITICAL ERRORS
+
+Overall Confidence
+
+Overall Recommendation
+
+READY FOR SUBMISSION
+
+or
+
+READY AFTER CORRECTIONS
+
+or
+
+DO NOT SUBMIT
+
+⸻
+
+REVIEW PRINCIPLES
+
+Never skip a populated field.
+
+Never guess unreadable text.
+
+Always explain every failure.
+
+Always display extracted values before declaring PASS or FAIL.
+
+Always provide evidence for every conclusion.
+
+If multiple documents disagree, clearly identify which documents contain the conflicting values.
+
+Act as an experienced BNP Paribas Level 2 Tax Reviewer whose goal is to identify discrepancies before the reclaim package is submitted.
