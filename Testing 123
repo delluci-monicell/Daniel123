@@ -1,32 +1,391 @@
-$TestFolder = "$env:USERPROFILE\Desktop\PowerShell_Test"
-New-Item -ItemType Directory -Force -Path $TestFolder | Out-Null
+Below is a prompt you can paste into your company’s AI. It is written as a software specification, not just a coding request, so the AI has a much better chance of producing a professional solution.
 
-$Saved = $false
+⸻
 
-foreach ($mail in $Scans.Items)
-{
-    if ($mail.Class -eq 43)
-    {
-        foreach ($att in $mail.Attachments)
-        {
-            if ($att.FileName.ToLower().EndsWith(".pdf"))
-            {
-                $FilePath = Join-Path $TestFolder $att.FileName
-                $att.SaveAsFile($FilePath)
+AI Prompt
 
-                Write-Host "Downloaded successfully:"
-                Write-Host $FilePath
+You are a Senior PowerShell Developer, Windows Forms Developer, and Outlook COM Automation Expert.
 
-                $Saved = $true
-                break
-            }
-        }
+Your task is to build a production-ready Windows PowerShell application for Microsoft Outlook.
 
-        if ($Saved) { break }
-    }
-}
+The final solution must be written in Windows PowerShell 5.1 and must not require any third-party modules.
 
-if (-not $Saved)
-{
-    Write-Host "No PDF attachments found in the Scans folder."
-}
+The solution must be fully commented, modular, and production quality.
+
+Output Files
+
+Generate exactly these three files.
+
+ScannerDownloader.ps1
+Config.ps1
+README.txt
+
+No additional files.
+
+The application must run by right-clicking
+
+ScannerDownloader.ps1
+Run with PowerShell
+
+No installation should be required.
+
+⸻
+
+Application Purpose
+
+Our office scanner sends scanned documents to Outlook as email attachments.
+
+The application should automatically download all PDF attachments from the scanner emails within a selected date range.
+
+⸻
+
+Outlook Requirements
+
+The application must automatically:
+
+* Detect whether Outlook is running.
+* If Outlook is closed, automatically open Outlook.
+* Wait until Outlook is fully initialized.
+* Connect to the current Outlook profile.
+* Connect using Outlook COM only.
+* Do not use Microsoft Graph.
+* Do not use Exchange Web Services.
+* Do not use Outlook REST API.
+
+⸻
+
+GUI Requirements
+
+Use Windows Forms.
+
+The GUI should contain:
+
+Title
+
+Scanner PDF Downloader
+
+Controls
+
+Mailbox dropdown
+
+Folder dropdown
+
+From Date picker
+
+To Date picker
+
+Download button
+
+Exit button
+
+Status label
+
+Status label values
+
+Ready
+Processing...
+Completed
+No emails found
+No PDF attachments found
+Error
+
+No progress bar.
+
+⸻
+
+Mailbox Selection
+
+Automatically detect every Outlook mailbox.
+
+Populate the Mailbox dropdown.
+
+Example
+
+Mailbox - User
+Shared Mailbox A
+Shared Mailbox B
+
+When the user changes the mailbox, automatically reload all folders.
+
+⸻
+
+Folder Selection
+
+Do NOT ask the user to type folder names.
+
+Automatically detect Outlook folders.
+
+Populate a Folder dropdown.
+
+Example
+
+Inbox
+Scans
+Pending
+Completed
+Archive
+
+Support nested folders.
+
+Display full folder path if necessary.
+
+⸻
+
+Configuration File
+
+Store all configurable settings in Config.ps1.
+
+Example
+
+Scanner Email Address
+Default Download Folder
+Download PDF Only
+Skip Duplicate Files
+Create Date Folder
+Open Folder After Completion
+Overwrite Existing Files
+Log Enabled
+
+The main application must automatically load Config.ps1.
+
+Users should only edit Config.ps1.
+
+They must never edit ScannerDownloader.ps1.
+
+⸻
+
+Date Selection
+
+Use Windows Date Picker controls.
+
+Allow users to select
+
+From Date
+
+To Date
+
+⸻
+
+Outlook Search
+
+Use Outlook Restrict().
+
+Never loop through every email.
+
+Search only between
+
+From Date
+
+To Date
+
+Only download emails received within the selected dates.
+
+⸻
+
+Scanner Email
+
+The scanner email address is stored in Config.ps1.
+
+Only process emails from this sender.
+
+Ignore every other sender.
+
+⸻
+
+Attachments
+
+Download only
+
+PDF
+
+Ignore
+
+jpg
+png
+gif
+bmp
+tif
+tiff
+doc
+docx
+xls
+xlsx
+zip
+msg
+
+⸻
+
+Download Folder
+
+Default location
+
+Desktop
+Scanner Downloads
+
+Automatically create the folder if it does not exist.
+
+If
+
+CreateDateFolder = True
+
+create
+
+Scanner Downloads
+2026-07-01_to_2026-07-15
+
+⸻
+
+Duplicate Files
+
+Never overwrite files.
+
+Automatically rename
+
+File.pdf
+File (1).pdf
+File (2).pdf
+
+⸻
+
+Logging
+
+Create
+
+DownloadLog.txt
+
+Log
+
+Start Time
+
+End Time
+
+Mailbox
+
+Folder
+
+Date Range
+
+Emails Processed
+
+PDFs Downloaded
+
+Skipped Files
+
+Errors
+
+⸻
+
+Status
+
+While downloading
+
+Display
+
+Processing...
+
+When finished
+
+Display
+
+Completed
+
+Also show
+
+Emails Processed
+PDF Files Downloaded
+Skipped
+Time Taken
+
+⸻
+
+Error Handling
+
+Handle
+
+Outlook not installed
+
+Outlook profile unavailable
+
+Folder not found
+
+No scanner emails
+
+No attachments
+
+No PDFs
+
+Access denied
+
+Duplicate filenames
+
+Save errors
+
+Invalid dates
+
+Cancelled operation
+
+Unexpected COM errors
+
+Never crash.
+
+Show friendly error messages.
+
+⸻
+
+Code Quality
+
+Use functions.
+
+Use try/catch.
+
+Release COM objects.
+
+Dispose GUI objects.
+
+No memory leaks.
+
+Comment every function.
+
+Use descriptive variable names.
+
+Follow PowerShell best practices.
+
+⸻
+
+README.txt
+
+Generate a professional README containing
+
+Purpose
+
+Requirements
+
+Configuration
+
+How to Run
+
+How to Edit Config.ps1
+
+Troubleshooting
+
+Supported Windows Versions
+
+Supported Outlook Versions
+
+Known Limitations
+
+Version History
+
+Contact Section
+
+⸻
+
+Final Requirements
+
+Return only these three files:
+
+ScannerDownloader.ps1
+Config.ps1
+README.txt
+
+The code must be complete, production-ready, fully functional, and require no manual coding after generation except updating the scanner email address and other settings in Config.ps1. The application must work on Windows PowerShell 5.1 with Microsoft Outlook installed.
