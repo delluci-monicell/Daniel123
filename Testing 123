@@ -1,66 +1,25 @@
-Sub LookupFromOldTracker()
-    Dim homeSht As Worksheet
-    Dim oldPath As String
-    Dim oldWB As Workbook
-    Dim sht As Worksheet
+Sub AddRefundFlagColumn(l2WS As Worksheet)
+    Dim l2LastRow As Long
+    Dim r As Long
+    Dim amt As Variant
+    Dim isOver As Boolean
 
-    Set homeSht = ThisWorkbook.Sheets("Home")
-    oldPath = homeSht.Range("OldTrackerPath").Value
+    ' Insert new column before H -> old H shifts to I, old AE (refund amount) shifts to AF
+    l2WS.Columns("H:H").Insert Shift:=xlToRight
+    l2WS.Cells(HEADER_ROW, 8).Value = "Refund > 10,000"
 
-    If oldPath = "" Then
-        MsgBox "Please browse and select the old tracker file first.", vbExclamation
-        Exit Sub
-    End If
+    l2LastRow = l2WS.Cells(l2WS.Rows.Count, "D").End(xlUp).Row
 
-    Set oldWB = Workbooks.Open(oldPath)
-
-    For Each sht In oldWB.Sheets
-        If sht.AutoFilterMode Then sht.AutoFilterMode = False
-    Next sht
-
-    Dim l1Sht As Worksheet, l2Sht As Worksheet
-    Set l1Sht = oldWB.Sheets(1)
-    Set l2Sht = oldWB.Sheets(2)
-
-    Dim l1Hdr As Long, l2Hdr As Long
-    l1Hdr = FindHeaderRow(l1Sht)
-    l2Hdr = FindHeaderRow(l2Sht)
-
-    ' NEW L1 Allocation rows -> search OLD L1 only
-    Call LookupAgainstOldSheet(ThisWorkbook.Sheets("L1 Allocation"), l1Sht, l1Hdr)
-
-    ' NEW L2 Allocation rows -> search OLD L2 only
-    Call LookupAgainstOldSheet(ThisWorkbook.Sheets("L2 Allocation"), l2Sht, l2Hdr)
-
-    oldWB.Close SaveChanges:=False
-End Sub
-
-Sub LookupAgainstOldSheet(ws As Worksheet, oldSht As Worksheet, oldHdr As Long)
-    Dim lastRow As Long, i As Long
-    Dim lookupVal As String
-    Dim foundCell As Range
-
-    lastRow = ws.Cells(ws.Rows.Count, "D").End(xlUp).Row
-    If lastRow < DATA_START_ROW Then Exit Sub
-
-    For i = DATA_START_ROW To lastRow
-        lookupVal = CStr(ws.Cells(i, COL_FORMREF).Value)
-        If lookupVal = "" Then GoTo NextRow
-
-        Set foundCell = SearchInSheet(oldSht, oldHdr, lookupVal)
-        If Not foundCell Is Nothing Then
-            ws.Cells(i, COL_NAME).Value = foundCell.Offset(0, 1).Value
-            ws.Cells(i, COL_ALLOCDATE).Value = foundCell.Offset(0, 2).Value
-            ws.Cells(i, COL_COMMENTS).Value = foundCell.Offset(0, 3).Value
+    For r = DATA_START_ROW To l2LastRow
+        amt = l2WS.Cells(r, "AF").Value
+        If IsNumeric(amt) Then
+            isOver = (CDbl(amt) > 10000)
+            l2WS.Cells(r, "H").Value = isOver
+            If isOver Then
+                l2WS.Cells(r, "H").Interior.Color = RGB(255, 229, 153)
+            Else
+                l2WS.Cells(r, "H").Interior.Pattern = xlNone
+            End If
         End If
-NextRow:
-    Next i
-
-    ws.Range(ws.Cells(DATA_START_ROW, COL_NAME), ws.Cells(lastRow, COL_COMMENTS)).Copy
-    ws.Cells(DATA_START_ROW, COL_NAME).PasteSpecial Paste:=xlPasteValues
-    Application.CutCopyMode = False
-
-    ws.Range(ws.Cells(DATA_START_ROW, COL_ALLOCDATE), ws.Cells(lastRow, COL_ALLOCDATE)).NumberFormat = "dd/mm/yyyy"
-    ws.Range(ws.Cells(DATA_START_ROW, COL_NAME), ws.Cells(lastRow, COL_NAME)).NumberFormat = "General"
-    ws.Range(ws.Cells(DATA_START_ROW, COL_COMMENTS), ws.Cells(lastRow, COL_COMMENTS)).NumberFormat = "General"
+    Next r
 End Sub
