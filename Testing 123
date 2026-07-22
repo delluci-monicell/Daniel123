@@ -1,44 +1,3 @@
-Option Explicit
-
-'====================== YOUR REAL FILE — CONFIRMED VALUES ======================
-Const DATA_SHEET       As String = "Master Data"
-Const TEMPLATE_SHEET   As String = "BO Template intergreated"
-Const SEQ_INPUT_CELL   As String = "M1"
-Const SEQ_DATA_COL     As String = "B"
-Const STATUS_COL       As Long = 26       ' column Z on Master Data
-
-Const ACCOUNT_CELL     As String = "B18"
-Const ISIN_CELL        As String = "F25"
-Const QTY_CELL         As String = "F26"
-Const PAYDATE_CELL     As String = "C26"
-
-Const BLOCK_FIRST_ROW  As Long = 1        ' from your Print_Area: $B$1:$I$36
-Const BLOCK_LAST_ROW   As Long = 36
-'================================================================================
-
-Sub RunBatchCreditAdviceExport()
-
-    Dim modeChoice As VbMsgBoxResult
-    modeChoice = MsgBox("Combine all Credit Advices into ONE PDF?" & vbCrLf & vbCrLf & _
-                         "Yes = Combined (1 PDF containing every line)" & vbCrLf & _
-                         "No = Individual (1 PDF per line)", _
-                         vbYesNoCancel + vbQuestion, "Export Mode")
-
-    Select Case modeChoice
-        Case vbYes: DoCombinedExport
-        Case vbNo:  DoSingleExport
-        Case Else:  Exit Sub
-    End Select
-
-End Sub
-
-' Cells that are genuinely, expectedly zero. Add a cell address here only
-' once you've confirmed it's a real business zero, not a data gap.
-Private Function GetZeroCheckExclude() As Variant
-    GetZeroCheckExclude = Array()
-End Function
-
-'====================== INDIVIDUAL PDF PER LINE ======================
 Private Sub DoSingleExport()
 
     Dim ZERO_CHECK_EXCLUDE As Variant
@@ -47,7 +6,7 @@ Private Sub DoSingleExport()
     Dim wsData As Worksheet, wsTemplate As Worksheet
     Dim lastRow As Long, r As Long, dupCounter As Long
     Dim seqNo As Variant
-    Dim outputFolder As String, fileName As String, baseFileName As String
+    Dim outputFolder As String, fileName As String, baseFileName As String, recordedFileName As String
     Dim account As String, isin As String, qty As String, payDateSafe As String
     Dim issueList As String, currentStatus As String
     Dim startTime As Double
@@ -85,9 +44,6 @@ Private Sub DoSingleExport()
         If seqNo = "" Then GoTo NextRow
 
         currentStatus = Trim(CStr(wsData.Cells(r, STATUS_COL).Value))
-
-        ' Status column is the single source of truth for "already done".
-        ' Blank = never run. Anything else = already run at least once.
         If regenerateAll = vbNo And currentStatus <> "" Then
             skipCount = skipCount + 1
             GoTo NextRow
@@ -96,17 +52,24 @@ Private Sub DoSingleExport()
         wsTemplate.Range(SEQ_INPUT_CELL).Value = seqNo
         Application.CalculateFullRebuild   ' guarantees rows never bleed together
 
-        account = CStr(wsTemplate.Range(ACCOUNT_CELL).Value)
-        isin = CStr(wsTemplate.Range(ISIN_CELL).Value)
-        qty = CStr(wsTemplate.Range(QTY_CELL).Value)
-        payDateSafe = Replace(CStr(wsTemplate.Range(PAYDATE_CELL).Value), "/", "")
-        baseFileName = CleanFileName(account & "_" & isin & "_" & qty & "_" & payDateSafe)
-        fileName = baseFileName & ".pdf"
+        recordedFileName = Trim(CStr(wsData.Cells(r, FILENAME_COL).Value))
 
-        ' Only version-bump on a genuine collision with a DIFFERENT row's
-        ' file. A row being regenerated with unchanged data reproduces its
-        ' own original name and simply overwrites it.
-        If regenerateAll = vbNo Then
+        If recordedFileName <> "" Then
+            ' This exact row already has its own established name — reuse it,
+            ' so a regenerate overwrites only itself, never another row's file.
+            fileName = recordedFileName
+        Else
+            ' First time this row has ever exported — build a fresh name and
+            ' resolve collisions against whatever's already on disk. This is
+            ' what correctly separates genuine duplicate-data rows into
+            ' their own _v2, _v3, _v4 files instead of overwriting each other.
+            account = CStr(wsTemplate.Range(ACCOUNT_CELL).Value)
+            isin = CStr(wsTemplate.Range(ISIN_CELL).Value)
+            qty = CStr(wsTemplate.Range(QTY_CELL).Value)
+            payDateSafe = Replace(CStr(wsTemplate.Range(PAYDATE_CELL).Value), "/", "")
+            baseFileName = CleanFileName(account & "_" & isin & "_" & qty & "_" & payDateSafe)
+
+            fileName = baseFileName & ".pdf"
             dupCounter = 1
             Do While Dir(outputFolder & fileName) <> ""
                 dupCounter = dupCounter + 1
@@ -123,16 +86,16 @@ Private Sub DoSingleExport()
 
         If Dir(outputFolder & fileName) = "" Then
             wsData.Cells(r, STATUS_COL).Value = "FAILED - PDF not found after export at SeqNo " & seqNo
-            wsData.Cells(r, STATUS_COL).Interior.Color = RGB(255, 150, 150)
             failCount = failCount + 1
-        ElseIf issueList <> "" Then
-            wsData.Cells(r, STATUS_COL).Value = "DONE - CHECK DATA: " & issueList & Format(Now, "dd/mm/yyyy hh:nn:ss")
-            wsData.Cells(r, STATUS_COL).Interior.Color = RGB(255, 199, 132)
-            warnCount = warnCount + 1
-            doneCount = doneCount + 1
         Else
-            wsData.Cells(r, STATUS_COL).Value = "DONE - " & Format(Now, "dd/mm/yyyy hh:nn:ss")
-            wsData.Cells(r, STATUS_COL).Interior.ColorIndex = xlColorIndexNone
+            wsData.Cells(r, FILENAME_COL).Value = fileName   ' remember it for every future run
+
+            If issueList <> "" Then
+                wsData.Cells(r, STATUS_COL).Value = "DONE - CHECK DATA: " & issueList & Format(Now, "dd/mm/yyyy hh:nn:ss")
+                warnCount = warnCount + 1
+            Else
+                wsData.Cells(r, STATUS_COL).Value = "DONE - " & Format(Now, "dd/mm/yyyy hh:nn:ss")
+            End If
             doneCount = doneCount + 1
         End If
 
@@ -144,16 +107,13 @@ CleanExit:
     Application.ScreenUpdating = True
     Application.DisplayAlerts = True
 
-    ' The Status column must actually be saved to disk, or a re-open sees
-    ' every row blank again and this whole approach stops working.
     If Not ThisWorkbook.ReadOnly Then
         On Error Resume Next
         ThisWorkbook.Save
         On Error GoTo 0
     Else
-        MsgBox "This workbook is open Read-Only, so the Status column just written will " & _
-               "NOT be saved. On next open, these rows will show blank Status again. " & _
-               "Save a writable copy if you need this to persist.", vbExclamation
+        MsgBox "This workbook is open Read-Only, so Status and filename records just written " & _
+               "will NOT be saved. Save a writable copy if you need this to persist.", vbExclamation
     End If
 
     MsgBox "Finished in " & Format(Timer - startTime, "0.0") & " sec." & vbCrLf & _
@@ -161,150 +121,3 @@ CleanExit:
            "Failed: " & failCount & "   Skipped: " & skipCount & vbCrLf & _
            "Folder: " & outputFolder, vbInformation
 End Sub
-
-'====================== ONE COMBINED PDF FOR ALL LINES ======================
-Private Sub DoCombinedExport()
-
-    Dim ZERO_CHECK_EXCLUDE As Variant
-    ZERO_CHECK_EXCLUDE = GetZeroCheckExclude()
-
-    Dim wsData As Worksheet, wsTemplate As Worksheet, sh As Worksheet
-    Dim lastRow As Long, r As Long, pageIndex As Long
-    Dim seqNo As Variant
-    Dim outputFolder As String, fileName As String, savePath As String, dupCounter As Long
-    Dim startTime As Double, includedCount As Long, warnCount As Long
-    Dim issueList As String
-    Dim folderPicker As FileDialog
-    Dim pageNames() As String
-
-    Set folderPicker = Application.FileDialog(msoFileDialogFolderPicker)
-    folderPicker.Title = "Select folder to save the combined Credit Advice PDF"
-    folderPicker.AllowMultiSelect = False
-    If folderPicker.Show <> -1 Then
-        MsgBox "No folder selected. Combined export cancelled.", vbExclamation
-        Exit Sub
-    End If
-    outputFolder = folderPicker.SelectedItems(1)
-    If Right(outputFolder, 1) <> "\" Then outputFolder = outputFolder & "\"
-
-    fileName = "Combined_Germany_Advice_" & Format(Date, "yyyymmdd") & ".pdf"
-    dupCounter = 1
-    Do While Dir(outputFolder & fileName) <> ""
-        dupCounter = dupCounter + 1
-        fileName = "Combined_Germany_Advice_" & Format(Date, "yyyymmdd") & "_v" & dupCounter & ".pdf"
-    Loop
-    savePath = outputFolder & fileName
-
-    Set wsData = ThisWorkbook.Sheets(DATA_SHEET)
-    Set wsTemplate = ThisWorkbook.Sheets(TEMPLATE_SHEET)
-    lastRow = wsData.Cells(wsData.Rows.Count, SEQ_DATA_COL).End(xlUp).Row
-
-    Application.DisplayAlerts = False
-    For Each sh In ThisWorkbook.Sheets
-        If Left(sh.Name, 6) = "CAPage" Then sh.Delete
-    Next sh
-    Application.DisplayAlerts = True
-
-    Application.ScreenUpdating = False
-    Application.Calculation = xlCalculationManual
-    startTime = Timer
-    pageIndex = 0
-    ReDim pageNames(1 To lastRow)
-
-    For r = 2 To lastRow
-        seqNo = wsData.Cells(r, SEQ_DATA_COL).Value
-        If seqNo = "" Then GoTo NextRow
-
-        wsTemplate.Copy After:=ThisWorkbook.Sheets(ThisWorkbook.Sheets.Count)
-        Set sh = ThisWorkbook.Sheets(ThisWorkbook.Sheets.Count)
-        pageIndex = pageIndex + 1
-        sh.Name = "CAPage" & pageIndex
-
-        sh.Range(SEQ_INPUT_CELL).Value = seqNo
-        Application.CalculateFullRebuild   ' guarantees rows never bleed together
-
-        issueList = CheckFormulaIssues(sh, BLOCK_FIRST_ROW, BLOCK_LAST_ROW, ZERO_CHECK_EXCLUDE)
-        If issueList <> "" Then
-            wsData.Cells(r, STATUS_COL).Value = "INCLUDED - CHECK DATA: " & issueList & Format(Now, "dd/mm/yyyy hh:nn:ss")
-            wsData.Cells(r, STATUS_COL).Interior.Color = RGB(255, 199, 132)
-            warnCount = warnCount + 1
-        Else
-            wsData.Cells(r, STATUS_COL).Value = "INCLUDED - " & Format(Now, "dd/mm/yyyy hh:nn:ss")
-            wsData.Cells(r, STATUS_COL).Interior.ColorIndex = xlColorIndexNone
-        End If
-
-        pageNames(pageIndex) = sh.Name
-
-NextRow:
-    Next r
-
-    If pageIndex = 0 Then
-        MsgBox "No rows were included - nothing to export.", vbExclamation
-        GoTo CleanExit
-    End If
-
-    ReDim Preserve pageNames(1 To pageIndex)
-    ThisWorkbook.Sheets(pageNames).Select
-    ThisWorkbook.Sheets(pageNames(1)).Activate
-
-    On Error Resume Next
-    ActiveSheet.ExportAsFixedFormat _
-        Type:=xlTypePDF, Filename:=savePath, Quality:=xlQualityStandard, _
-        IncludeDocProperties:=False, IgnorePrintAreas:=False, OpenAfterPublish:=False
-    On Error GoTo 0
-
-    includedCount = pageIndex
-
-CleanExit:
-    Application.DisplayAlerts = False
-    For Each sh In ThisWorkbook.Sheets
-        If Left(sh.Name, 6) = "CAPage" Then sh.Delete
-    Next sh
-    Application.DisplayAlerts = True
-
-    wsTemplate.Activate
-    Application.Calculation = xlCalculationAutomatic
-    Application.ScreenUpdating = True
-
-    If includedCount = 0 Then Exit Sub
-
-    If Dir(savePath) = "" Then
-        MsgBox "Combined export did not save - check the folder path and try again.", vbCritical
-    Else
-        MsgBox "Combined export finished in " & Format(Timer - startTime, "0.0") & " sec." & vbCrLf & _
-               "Advices included: " & includedCount & " (flagged for review: " & warnCount & ")" & vbCrLf & _
-               "Saved as: " & savePath, vbInformation
-    End If
-End Sub
-
-'====================== HELPERS ======================
-Private Function CheckFormulaIssues(ws As Worksheet, firstRow As Long, lastRow As Long, excludeList As Variant) As String
-    Dim c As Range, issues As String, addr As String, isExcluded As Boolean, ex As Variant
-
-    For Each c In ws.Range(ws.Cells(firstRow, "B"), ws.Cells(lastRow, "I"))
-        If c.HasFormula Then
-            addr = c.Address(False, False)
-            isExcluded = False
-            For Each ex In excludeList
-                If addr = ex Then isExcluded = True
-            Next ex
-
-            If IsError(c.Value) Then
-                issues = issues & addr & "=" & CStr(c.Value) & "; "
-            ElseIf Not isExcluded And IsNumeric(c.Value) And c.Value = 0 Then
-                issues = issues & addr & "=ZERO; "
-            End If
-        End If
-    Next c
-
-    CheckFormulaIssues = issues
-End Function
-
-Private Function CleanFileName(s As String) As String
-    Dim badChars As Variant, ch As Variant
-    badChars = Array("\", "/", ":", "*", "?", Chr(34), "<", ">", "|")
-    For Each ch In badChars
-        s = Replace(s, ch, "-")
-    Next ch
-    CleanFileName = s
-End Function
