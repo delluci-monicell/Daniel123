@@ -36,7 +36,7 @@ End Sub
 Private Sub DoSingleExport()
 
     Dim ZERO_CHECK_EXCLUDE() As Variant
-    ZERO_CHECK_EXCLUDE = Array("B21")   ' Client Cash Account — confirm this address; add more if other fields are legitimately zero
+    ZERO_CHECK_EXCLUDE = Array("B21")   ' Client Cash Account — confirmed legitimately zero
 
     Dim wsData As Worksheet, wsTemplate As Worksheet
     Dim lastRow As Long, r As Long
@@ -98,8 +98,6 @@ Private Sub DoSingleExport()
             GoTo NextRow
         End If
 
-        ' QA scan — read-only check of the template's formula results.
-        ' Never modifies the template sheet in any way.
         issueList = CheckFormulaIssues(wsTemplate, BLOCK_FIRST_ROW, BLOCK_LAST_ROW, ZERO_CHECK_EXCLUDE)
 
         wsTemplate.ExportAsFixedFormat _
@@ -130,7 +128,7 @@ CleanExit:
     Application.ScreenUpdating = True
     Application.DisplayAlerts = True
     MsgBox "Finished in " & Format(Timer - startTime, "0.0") & " sec." & vbCrLf & _
-           "Saved: " & doneCount & " (of which flagged for review: " & warnCount & ")" & vbCrLf & _
+           "Saved: " & doneCount & " (flagged for review: " & warnCount & ")" & vbCrLf & _
            "Failed: " & failCount & "   Skipped: " & skipCount & vbCrLf & _
            "Folder: " & outputFolder, vbInformation
 End Sub
@@ -138,13 +136,13 @@ End Sub
 '====================== ONE COMBINED PDF FOR ALL LINES ======================
 Private Sub DoCombinedExport()
 
-    Dim wsData As Worksheet, wsTemplate As Worksheet, wsCombined As Worksheet
-    Dim lastRow As Long, r As Long
+    Dim wsData As Worksheet, wsTemplate As Worksheet, sh As Worksheet
+    Dim lastRow As Long, r As Long, pageIndex As Long
     Dim seqNo As Variant
     Dim outputFolder As String, fileName As String, savePath As String, dupCounter As Long
-    Dim blockHeight As Long, destFirstRow As Long
     Dim startTime As Double, includedCount As Long
     Dim folderPicker As FileDialog
+    Dim pageNames() As String
 
     Set folderPicker = Application.FileDialog(msoFileDialogFolderPicker)
     folderPicker.Title = "Select folder to save the combined Credit Advice PDF"
@@ -158,7 +156,7 @@ Private Sub DoCombinedExport()
 
     fileName = "Combined_Germany_Advice_" & Format(Date, "yyyymmdd") & ".pdf"
     dupCounter = 1
-    Do While Dir(outputFolder & fileName) <> ""   ' never silently overwrite a same-day run
+    Do While Dir(outputFolder & fileName) <> ""
         dupCounter = dupCounter + 1
         fileName = "Combined_Germany_Advice_" & Format(Date, "yyyymmdd") & "_v" & dupCounter & ".pdf"
     Loop
@@ -167,72 +165,76 @@ Private Sub DoCombinedExport()
     Set wsData = ThisWorkbook.Sheets(DATA_SHEET)
     Set wsTemplate = ThisWorkbook.Sheets(TEMPLATE_SHEET)
     lastRow = wsData.Cells(wsData.Rows.Count, SEQ_DATA_COL).End(xlUp).Row
-    blockHeight = BLOCK_LAST_ROW - BLOCK_FIRST_ROW + 1
 
+    ' Clear out any leftover clone sheets from an earlier interrupted run
     Application.DisplayAlerts = False
-    On Error Resume Next
-    ThisWorkbook.Sheets("CombinedExport_TEMP").Delete
-    On Error GoTo 0
-    Set wsCombined = ThisWorkbook.Sheets.Add(After:=wsTemplate)
-    wsCombined.Name = "CombinedExport_TEMP"
+    For Each sh In ThisWorkbook.Sheets
+        If Left(sh.Name, 6) = "CAPage" Then sh.Delete
+    Next sh
     Application.DisplayAlerts = True
-
-    With wsCombined.PageSetup
-        .Orientation = wsTemplate.PageSetup.Orientation
-        .PaperSize = wsTemplate.PageSetup.PaperSize
-        .TopMargin = wsTemplate.PageSetup.TopMargin
-        .BottomMargin = wsTemplate.PageSetup.BottomMargin
-        .LeftMargin = wsTemplate.PageSetup.LeftMargin
-        .RightMargin = wsTemplate.PageSetup.RightMargin
-        .FitToPagesWide = 1
-        .FitToPagesTall = False
-        .Zoom = False
-    End With
 
     Application.ScreenUpdating = False
     Application.Calculation = xlCalculationManual
     startTime = Timer
-    destFirstRow = 1
+    pageIndex = 0
+    ReDim pageNames(1 To lastRow)
 
+    ' Clone the REAL template sheet once per row — this is what guarantees the
+    ' combined PDF is pixel-identical to Individual mode: same logo, same
+    ' column widths, same merges, since it's literally the same sheet.
     For r = 2 To lastRow
         seqNo = wsData.Cells(r, SEQ_DATA_COL).Value
         If seqNo = "" Then GoTo NextRow
 
-        wsTemplate.Range(SEQ_INPUT_CELL).Value = seqNo
-        Application.CalculateFullRebuild
+        wsTemplate.Copy After:=ThisWorkbook.Sheets(ThisWorkbook.Sheets.Count)
+        Set sh = ThisWorkbook.Sheets(ThisWorkbook.Sheets.Count)
+        pageIndex = pageIndex + 1
+        sh.Name = "CAPage" & pageIndex
 
-        wsTemplate.Rows(BLOCK_FIRST_ROW & ":" & BLOCK_LAST_ROW).Copy
-        wsCombined.Rows(destFirstRow).PasteSpecial xlPasteAll
-        Application.CutCopyMode = False
-        ' Row heights are NOT set explicitly — whatever the whole-row copy/paste
-        ' carries over natively is left as-is. Nothing here touches wsTemplate.
+        sh.Range(SEQ_INPUT_CELL).Value = seqNo
+        Application.CalculateFullRebuild   ' guarantees rows never bleed together
 
-        wsCombined.HPageBreaks.Add Before:=wsCombined.Rows(destFirstRow + blockHeight)
-
-        includedCount = includedCount + 1
-        destFirstRow = destFirstRow + blockHeight
+        pageNames(pageIndex) = sh.Name
 
 NextRow:
     Next r
 
-    If includedCount = 0 Then
+    If pageIndex = 0 Then
         MsgBox "No rows were included - nothing to export.", vbExclamation
         GoTo CleanExit
     End If
 
-    wsCombined.PageSetup.PrintArea = "A1:I" & (destFirstRow - 1)
-    wsCombined.ExportAsFixedFormat _
+    ReDim Preserve pageNames(1 To pageIndex)
+    ThisWorkbook.Sheets(pageNames).Select
+    ThisWorkbook.Sheets(pageNames(1)).Activate
+
+    On Error Resume Next
+    ActiveSheet.ExportAsFixedFormat _
         Type:=xlTypePDF, Filename:=savePath, Quality:=xlQualityStandard, _
         IncludeDocProperties:=False, IgnorePrintAreas:=False, OpenAfterPublish:=False
+    On Error GoTo 0
+
+    includedCount = pageIndex
 
 CleanExit:
+    Application.DisplayAlerts = False
+    For Each sh In ThisWorkbook.Sheets
+        If Left(sh.Name, 6) = "CAPage" Then sh.Delete
+    Next sh
+    Application.DisplayAlerts = True
+
+    wsTemplate.Activate
     Application.Calculation = xlCalculationAutomatic
     Application.ScreenUpdating = True
-    Application.DisplayAlerts = False
-    If Not wsCombined Is Nothing Then wsCombined.Delete
-    Application.DisplayAlerts = True
-    MsgBox "Combined export finished in " & Format(Timer - startTime, "0.0") & " sec." & vbCrLf & _
-           "Advices included: " & includedCount & vbCrLf & "Saved as: " & savePath, vbInformation
+
+    If includedCount = 0 Then Exit Sub
+
+    If Dir(savePath) = "" Then
+        MsgBox "Combined export did not save - check the folder path and try again.", vbCritical
+    Else
+        MsgBox "Combined export finished in " & Format(Timer - startTime, "0.0") & " sec." & vbCrLf & _
+               "Advices included: " & includedCount & vbCrLf & "Saved as: " & savePath, vbInformation
+    End If
 End Sub
 
 '====================== HELPERS ======================
