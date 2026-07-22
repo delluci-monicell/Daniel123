@@ -1,25 +1,296 @@
-Sub AddRefundFlagColumn(l2WS As Worksheet)
-    Dim l2LastRow As Long
-    Dim r As Long
-    Dim amt As Variant
-    Dim isOver As Boolean
+Option Explicit
 
-    ' Insert new column before H -> old H shifts to I, old AE (refund amount) shifts to AF
-    l2WS.Columns("H:H").Insert Shift:=xlToRight
-    l2WS.Cells(HEADER_ROW, 8).Value = "Refund > 10,000"
+'====================== YOUR REAL FILE — CONFIRMED VALUES ======================
+Const DATA_SHEET       As String = "Master Data"
+Const TEMPLATE_SHEET   As String = "BO Template intergreated"
+Const SEQ_INPUT_CELL   As String = "M1"
+Const SEQ_DATA_COL     As String = "B"
+Const STATUS_COL       As Long = 22       ' column V on Master Data — first free column past B:U
 
-    l2LastRow = l2WS.Cells(l2WS.Rows.Count, "D").End(xlUp).Row
+Const ACCOUNT_CELL     As String = "B18"
+Const ISIN_CELL        As String = "F25"
+Const QTY_CELL         As String = "F26"
+Const PAYDATE_CELL     As String = "C26"
+Const BENEFICIARY_CELL As String = "H13"
 
-    For r = DATA_START_ROW To l2LastRow
-        amt = l2WS.Cells(r, "AF").Value
-        If IsNumeric(amt) Then
-            isOver = (CDbl(amt) > 10000)
-            l2WS.Cells(r, "H").Value = isOver
-            If isOver Then
-                l2WS.Cells(r, "H").Interior.Color = RGB(255, 229, 153)
-            Else
-                l2WS.Cells(r, "H").Interior.Pattern = xlNone
-            End If
-        End If
-    Next r
+Const BLOCK_FIRST_ROW  As Long = 1        ' from your Print_Area: $B$1:$I$36
+Const BLOCK_LAST_ROW   As Long = 36
+'================================================================================
+
+Dim AUTOFIT_RANGES() As Variant   ' verify H13's actual merge extent — see note above
+
+Sub RunBatchCreditAdviceExport()
+
+    AUTOFIT_RANGES = Array("H13:I15")   ' widen to "H13:I18" etc. if your merge check shows more
+
+    Dim modeChoice As VbMsgBoxResult
+    modeChoice = MsgBox("Combine all Credit Advices into ONE PDF?" & vbCrLf & vbCrLf & _
+                         "Yes = Combined (1 PDF containing every line)" & vbCrLf & _
+                         "No = Individual (1 PDF per line)", _
+                         vbYesNoCancel + vbQuestion, "Export Mode")
+
+    Select Case modeChoice
+        Case vbYes: DoCombinedExport
+        Case vbNo:  DoSingleExport
+        Case Else:  Exit Sub
+    End Select
+
 End Sub
+
+'====================== INDIVIDUAL PDF PER LINE ======================
+Private Sub DoSingleExport()
+
+    Dim wsData As Worksheet, wsTemplate As Worksheet
+    Dim lastRow As Long, r As Long, i As Long, dupCounter As Long
+    Dim seqNo As Variant
+    Dim outputFolder As String, fileName As String, baseFileName As String
+    Dim account As String, isin As String, qty As String, payDateSafe As String
+    Dim startTime As Double
+    Dim doneCount As Long, failCount As Long, skipCount As Long
+    Dim folderPicker As FileDialog
+
+    Set folderPicker = Application.FileDialog(msoFileDialogFolderPicker)
+    folderPicker.Title = "Select folder to save Credit Advice PDFs"
+    folderPicker.AllowMultiSelect = False
+    If folderPicker.Show <> -1 Then
+        MsgBox "No folder selected. Batch cancelled.", vbExclamation
+        Exit Sub
+    End If
+    outputFolder = folderPicker.SelectedItems(1)
+    If Right(outputFolder, 1) <> "\" Then outputFolder = outputFolder & "\"
+
+    Set wsData = ThisWorkbook.Sheets(DATA_SHEET)
+    Set wsTemplate = ThisWorkbook.Sheets(TEMPLATE_SHEET)
+    lastRow = wsData.Cells(wsData.Rows.Count, SEQ_DATA_COL).End(xlUp).Row
+
+    Application.ScreenUpdating = False
+    Application.Calculation = xlCalculationManual
+    Application.DisplayAlerts = False
+    startTime = Timer
+
+    For r = 2 To lastRow
+        seqNo = wsData.Cells(r, SEQ_DATA_COL).Value
+        If seqNo = "" Then GoTo NextRow
+        If Left(CStr(wsData.Cells(r, STATUS_COL).Value), 4) = "DONE" Then
+            skipCount = skipCount + 1
+            GoTo NextRow
+        End If
+
+        wsTemplate.Range(SEQ_INPUT_CELL).Value = seqNo
+        Application.CalculateFullRebuild   ' guarantees rows never bleed together
+
+        If IsError(wsTemplate.Range(BENEFICIARY_CELL).Value) Or wsTemplate.Range(BENEFICIARY_CELL).Value = "" Then
+            wsData.Cells(r, STATUS_COL).Value = "FAILED - lookup error at SeqNo " & seqNo
+            failCount = failCount + 1
+            MsgBox "Stopped at SeqNo " & seqNo & " - lookup returned blank/error. Check Master Data.", vbCritical
+            GoTo CleanExit
+        End If
+
+        For i = LBound(AUTOFIT_RANGES) To UBound(AUTOFIT_RANGES)
+            AutoFitMergedRow wsTemplate, CStr(AUTOFIT_RANGES(i))
+        Next i
+
+        account = CStr(wsTemplate.Range(ACCOUNT_CELL).Value)
+        isin = CStr(wsTemplate.Range(ISIN_CELL).Value)
+        qty = CStr(wsTemplate.Range(QTY_CELL).Value)
+        payDateSafe = Replace(CStr(wsTemplate.Range(PAYDATE_CELL).Value), "/", "")
+
+        baseFileName = CleanFileName(account & "_" & isin & "_" & qty & "_" & payDateSafe)
+        fileName = baseFileName & ".pdf"
+        dupCounter = 1
+        Do While Dir(outputFolder & fileName) <> ""    ' never silently overwrite
+            dupCounter = dupCounter + 1
+            fileName = baseFileName & "_v" & dupCounter & ".pdf"
+        Loop
+
+        wsTemplate.ExportAsFixedFormat _
+            Type:=xlTypePDF, Filename:=outputFolder & fileName, _
+            Quality:=xlQualityStandard, IncludeDocProperties:=False, _
+            IgnorePrintAreas:=False, OpenAfterPublish:=False
+
+        If Dir(outputFolder & fileName) = "" Then
+            wsData.Cells(r, STATUS_COL).Value = "FAILED - PDF not found after export at SeqNo " & seqNo
+            failCount = failCount + 1
+        Else
+            wsData.Cells(r, STATUS_COL).Value = "DONE - " & Format(Now, "dd/mm/yyyy hh:nn:ss")
+            doneCount = doneCount + 1
+        End If
+
+NextRow:
+    Next r
+
+CleanExit:
+    Application.Calculation = xlCalculationAutomatic
+    Application.ScreenUpdating = True
+    Application.DisplayAlerts = True
+    MsgBox "Finished in " & Format(Timer - startTime, "0.0") & " sec." & vbCrLf & _
+           "Saved: " & doneCount & "   Failed: " & failCount & "   Skipped: " & skipCount & vbCrLf & _
+           "Folder: " & outputFolder, vbInformation
+End Sub
+
+'====================== ONE COMBINED PDF FOR ALL LINES ======================
+Private Sub DoCombinedExport()
+
+    Dim wsData As Worksheet, wsTemplate As Worksheet, wsCombined As Worksheet
+    Dim lastRow As Long, r As Long, i As Long
+    Dim seqNo As Variant
+    Dim outputFolder As String, fileName As String, savePath As String, dupCounter As Long
+    Dim blockHeight As Long, destFirstRow As Long
+    Dim maxPageHeightPt As Double, blockHeightPt As Double
+    Dim startTime As Double, includedCount As Long
+    Dim folderPicker As FileDialog
+
+    Set folderPicker = Application.FileDialog(msoFileDialogFolderPicker)
+    folderPicker.Title = "Select folder to save the combined Credit Advice PDF"
+    folderPicker.AllowMultiSelect = False
+    If folderPicker.Show <> -1 Then
+        MsgBox "No folder selected. Combined export cancelled.", vbExclamation
+        Exit Sub
+    End If
+    outputFolder = folderPicker.SelectedItems(1)
+    If Right(outputFolder, 1) <> "\" Then outputFolder = outputFolder & "\"
+
+    fileName = "Combined_Germany_Advice_" & Format(Date, "yyyymmdd") & ".pdf"
+    dupCounter = 1
+    Do While Dir(outputFolder & fileName) <> ""   ' never silently overwrite a same-day run
+        dupCounter = dupCounter + 1
+        fileName = "Combined_Germany_Advice_" & Format(Date, "yyyymmdd") & "_v" & dupCounter & ".pdf"
+    Loop
+    savePath = outputFolder & fileName
+
+    Set wsData = ThisWorkbook.Sheets(DATA_SHEET)
+    Set wsTemplate = ThisWorkbook.Sheets(TEMPLATE_SHEET)
+    lastRow = wsData.Cells(wsData.Rows.Count, SEQ_DATA_COL).End(xlUp).Row
+    blockHeight = BLOCK_LAST_ROW - BLOCK_FIRST_ROW + 1
+
+    Application.DisplayAlerts = False
+    On Error Resume Next
+    ThisWorkbook.Sheets("CombinedExport_TEMP").Delete
+    On Error GoTo 0
+    Set wsCombined = ThisWorkbook.Sheets.Add(After:=wsTemplate)
+    wsCombined.Name = "CombinedExport_TEMP"
+    Application.DisplayAlerts = True
+
+    With wsCombined.PageSetup
+        .Orientation = wsTemplate.PageSetup.Orientation
+        .PaperSize = wsTemplate.PageSetup.PaperSize
+        .TopMargin = wsTemplate.PageSetup.TopMargin
+        .BottomMargin = wsTemplate.PageSetup.BottomMargin
+        .LeftMargin = wsTemplate.PageSetup.LeftMargin
+        .RightMargin = wsTemplate.PageSetup.RightMargin
+        .FitToPagesWide = 1
+        .FitToPagesTall = False
+        .Zoom = False
+    End With
+    maxPageHeightPt = PageHeightPoints(wsTemplate.PageSetup.PaperSize) _
+                       - wsTemplate.PageSetup.TopMargin - wsTemplate.PageSetup.BottomMargin
+
+    Application.ScreenUpdating = False
+    Application.Calculation = xlCalculationManual
+    startTime = Timer
+    destFirstRow = 1
+
+    For r = 2 To lastRow
+        seqNo = wsData.Cells(r, SEQ_DATA_COL).Value
+        If seqNo = "" Then GoTo NextRow
+
+        wsTemplate.Range(SEQ_INPUT_CELL).Value = seqNo
+        Application.CalculateFullRebuild
+
+        If IsError(wsTemplate.Range(BENEFICIARY_CELL).Value) Or wsTemplate.Range(BENEFICIARY_CELL).Value = "" Then
+            MsgBox "Stopped at SeqNo " & seqNo & " - lookup returned blank/error. Check Master Data.", vbCritical
+            GoTo CleanExit
+        End If
+
+        For i = LBound(AUTOFIT_RANGES) To UBound(AUTOFIT_RANGES)
+            AutoFitMergedRow wsTemplate, CStr(AUTOFIT_RANGES(i))
+        Next i
+
+        blockHeightPt = 0
+        For i = BLOCK_FIRST_ROW To BLOCK_LAST_ROW
+            blockHeightPt = blockHeightPt + wsTemplate.Rows(i).Height
+        Next i
+        If blockHeightPt > maxPageHeightPt Then
+            MsgBox "Stopped at SeqNo " & seqNo & " - this advice is too tall for one page. " & _
+                   "Use Individual mode for this row, then re-run Combined.", vbCritical
+            GoTo CleanExit
+        End If
+
+        wsTemplate.Rows(BLOCK_FIRST_ROW & ":" & BLOCK_LAST_ROW).Copy
+        wsCombined.Rows(destFirstRow).PasteSpecial xlPasteAll
+        Application.CutCopyMode = False
+
+        For i = 0 To blockHeight - 1
+            wsCombined.Rows(destFirstRow + i).RowHeight = wsTemplate.Rows(BLOCK_FIRST_ROW + i).Height
+        Next i
+
+        wsCombined.HPageBreaks.Add Before:=wsCombined.Rows(destFirstRow + blockHeight)
+
+        includedCount = includedCount + 1
+        destFirstRow = destFirstRow + blockHeight
+
+NextRow:
+    Next r
+
+    If includedCount = 0 Then
+        MsgBox "No rows were included - nothing to export.", vbExclamation
+        GoTo CleanExit
+    End If
+
+    wsCombined.PageSetup.PrintArea = "A1:I" & (destFirstRow - 1)
+    wsCombined.ExportAsFixedFormat _
+        Type:=xlTypePDF, Filename:=savePath, Quality:=xlQualityStandard, _
+        IncludeDocProperties:=False, IgnorePrintAreas:=False, OpenAfterPublish:=False
+
+CleanExit:
+    Application.Calculation = xlCalculationAutomatic
+    Application.ScreenUpdating = True
+    Application.DisplayAlerts = False
+    If Not wsCombined Is Nothing Then wsCombined.Delete
+    Application.DisplayAlerts = True
+    MsgBox "Combined export finished in " & Format(Timer - startTime, "0.0") & " sec." & vbCrLf & _
+           "Advices included: " & includedCount & vbCrLf & "Saved as: " & savePath, vbInformation
+End Sub
+
+Private Function PageHeightPoints(paperSize As XlPaperSize) As Double
+    Select Case paperSize
+        Case xlPaperA4:      PageHeightPoints = 841.89
+        Case xlPaperLetter:  PageHeightPoints = 792
+        Case xlPaperLegal:   PageHeightPoints = 1008
+        Case xlPaperA3:      PageHeightPoints = 1190.55
+        Case Else:           PageHeightPoints = 841.89
+    End Select
+End Function
+
+'====================== SHARED HELPERS ======================
+Private Sub AutoFitMergedRow(ws As Worksheet, mergedRange As String)
+    Dim rng As Range, lines() As String, i As Integer
+    Dim colWidthChars As Double, neededHeight As Double, wrapLines As Long
+    Dim c As Range
+
+    Set rng = ws.Range(mergedRange)
+    lines = Split(rng.Cells(1, 1).Value, Chr(10))
+
+    colWidthChars = 0
+    For Each c In rng.Columns
+        colWidthChars = colWidthChars + ws.Columns(c.Column).Width / 7
+    Next c
+    If colWidthChars = 0 Then colWidthChars = 20
+
+    neededHeight = 0
+    For i = LBound(lines) To UBound(lines)
+        wrapLines = Application.WorksheetFunction.Max(1, Int((Len(lines(i)) / colWidthChars) + 0.999))
+        neededHeight = neededHeight + (wrapLines * 15)
+    Next i
+
+    ws.Rows(rng.Row).RowHeight = Application.WorksheetFunction.Max(neededHeight, 15)
+End Sub
+
+Private Function CleanFileName(s As String) As String
+    Dim badChars As Variant, ch As Variant
+    badChars = Array("\", "/", ":", "*", "?", Chr(34), "<", ">", "|")
+    For Each ch In badChars
+        s = Replace(s, ch, "-")
+    Next ch
+    CleanFileName = s
+End Function
