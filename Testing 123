@@ -32,16 +32,25 @@ Sub RunBatchCreditAdviceExport()
 
 End Sub
 
+' Cells that are genuinely, expectedly zero — currently none. Add a cell
+' address here (e.g. "B21") only once you've confirmed it's a real business
+' zero, not a data gap. Everything else with a formula gets checked.
+Private Function GetZeroCheckExclude() As Variant
+    GetZeroCheckExclude = Array()
+End Function
+
 '====================== INDIVIDUAL PDF PER LINE ======================
 Private Sub DoSingleExport()
 
-    Dim ZERO_CHECK_EXCLUDE() As Variant
-    ZERO_CHECK_EXCLUDE = Array("B21")   ' Client Cash Account — confirmed legitimately zero
+    Dim ZERO_CHECK_EXCLUDE As Variant
+    ZERO_CHECK_EXCLUDE = GetZeroCheckExclude()
 
     Dim wsData As Worksheet, wsTemplate As Worksheet
-    Dim lastRow As Long, r As Long
-    Dim seqNo As Variant
-    Dim outputFolder As String, fileName As String, baseFileName As String
+    Dim lastRow As Long, r As Long, dupCounter As Long
+    Dim seqNo As Variant, seqKey As String
+    Dim outputFolder As String, fileName As String, baseFileName As String, assignedFileName As String
+    Dim manifestPath As String
+    Dim manifest As Object, usedNames As Object, k As Variant
     Dim account As String, isin As String, qty As String, payDateSafe As String
     Dim issueList As String
     Dim startTime As Double
@@ -65,6 +74,13 @@ Private Sub DoSingleExport()
     outputFolder = folderPicker.SelectedItems(1)
     If Right(outputFolder, 1) <> "\" Then outputFolder = outputFolder & "\"
 
+    manifestPath = outputFolder & "export_manifest.csv"
+    Set manifest = LoadManifest(manifestPath)
+    Set usedNames = CreateObject("Scripting.Dictionary")
+    For Each k In manifest.Keys
+        usedNames(manifest(k)) = True
+    Next k
+
     Set wsData = ThisWorkbook.Sheets(DATA_SHEET)
     Set wsTemplate = ThisWorkbook.Sheets(TEMPLATE_SHEET)
     lastRow = wsData.Cells(wsData.Rows.Count, SEQ_DATA_COL).End(xlUp).Row
@@ -77,6 +93,7 @@ Private Sub DoSingleExport()
     For r = 2 To lastRow
         seqNo = wsData.Cells(r, SEQ_DATA_COL).Value
         If seqNo = "" Then GoTo NextRow
+        seqKey = CStr(seqNo)
 
         wsTemplate.Range(SEQ_INPUT_CELL).Value = seqNo
         Application.CalculateFullRebuild   ' guarantees rows never bleed together
@@ -85,17 +102,24 @@ Private Sub DoSingleExport()
         isin = CStr(wsTemplate.Range(ISIN_CELL).Value)
         qty = CStr(wsTemplate.Range(QTY_CELL).Value)
         payDateSafe = Replace(CStr(wsTemplate.Range(PAYDATE_CELL).Value), "/", "")
-
         baseFileName = CleanFileName(account & "_" & isin & "_" & qty & "_" & payDateSafe)
-        fileName = baseFileName & ".pdf"
 
-        ' The PDF on disk is the source of truth for "already done" — keeps
-        ' resume working across a closed/reopened read-only file.
-        If regenerateAll = vbNo And Dir(outputFolder & fileName) <> "" Then
-            wsData.Cells(r, STATUS_COL).Value = "SKIPPED - PDF already exists"
-            wsData.Cells(r, STATUS_COL).Interior.ColorIndex = xlColorIndexNone
-            skipCount = skipCount + 1
-            GoTo NextRow
+        If manifest.Exists(seqKey) Then
+            assignedFileName = manifest(seqKey)
+            If regenerateAll = vbNo And Dir(outputFolder & assignedFileName) <> "" Then
+                wsData.Cells(r, STATUS_COL).Value = "SKIPPED - PDF already exists"
+                wsData.Cells(r, STATUS_COL).Interior.ColorIndex = xlColorIndexNone
+                skipCount = skipCount + 1
+                GoTo NextRow
+            End If
+            fileName = assignedFileName
+        Else
+            fileName = baseFileName & ".pdf"
+            dupCounter = 1
+            Do While usedNames.Exists(fileName) Or Dir(outputFolder & fileName) <> ""
+                dupCounter = dupCounter + 1
+                fileName = baseFileName & "_v" & dupCounter & ".pdf"
+            Loop
         End If
 
         issueList = CheckFormulaIssues(wsTemplate, BLOCK_FIRST_ROW, BLOCK_LAST_ROW, ZERO_CHECK_EXCLUDE)
@@ -109,14 +133,19 @@ Private Sub DoSingleExport()
             wsData.Cells(r, STATUS_COL).Value = "FAILED - PDF not found after export at SeqNo " & seqNo
             wsData.Cells(r, STATUS_COL).Interior.Color = RGB(255, 150, 150)
             failCount = failCount + 1
-        ElseIf issueList <> "" Then
-            wsData.Cells(r, STATUS_COL).Value = "DONE - CHECK DATA: " & issueList & Format(Now, "dd/mm/yyyy hh:nn:ss")
-            wsData.Cells(r, STATUS_COL).Interior.Color = RGB(255, 199, 132)
-            warnCount = warnCount + 1
-            doneCount = doneCount + 1
         Else
-            wsData.Cells(r, STATUS_COL).Value = "DONE - " & Format(Now, "dd/mm/yyyy hh:nn:ss")
-            wsData.Cells(r, STATUS_COL).Interior.ColorIndex = xlColorIndexNone
+            manifest(seqKey) = fileName
+            usedNames(fileName) = True
+            AppendManifestEntry manifestPath, seqKey, fileName
+
+            If issueList <> "" Then
+                wsData.Cells(r, STATUS_COL).Value = "DONE - CHECK DATA: " & issueList & Format(Now, "dd/mm/yyyy hh:nn:ss")
+                wsData.Cells(r, STATUS_COL).Interior.Color = RGB(255, 199, 132)
+                warnCount = warnCount + 1
+            Else
+                wsData.Cells(r, STATUS_COL).Value = "DONE - " & Format(Now, "dd/mm/yyyy hh:nn:ss")
+                wsData.Cells(r, STATUS_COL).Interior.ColorIndex = xlColorIndexNone
+            End If
             doneCount = doneCount + 1
         End If
 
@@ -136,11 +165,15 @@ End Sub
 '====================== ONE COMBINED PDF FOR ALL LINES ======================
 Private Sub DoCombinedExport()
 
+    Dim ZERO_CHECK_EXCLUDE As Variant
+    ZERO_CHECK_EXCLUDE = GetZeroCheckExclude()
+
     Dim wsData As Worksheet, wsTemplate As Worksheet, sh As Worksheet
     Dim lastRow As Long, r As Long, pageIndex As Long
     Dim seqNo As Variant
     Dim outputFolder As String, fileName As String, savePath As String, dupCounter As Long
-    Dim startTime As Double, includedCount As Long
+    Dim startTime As Double, includedCount As Long, warnCount As Long
+    Dim issueList As String
     Dim folderPicker As FileDialog
     Dim pageNames() As String
 
@@ -166,7 +199,6 @@ Private Sub DoCombinedExport()
     Set wsTemplate = ThisWorkbook.Sheets(TEMPLATE_SHEET)
     lastRow = wsData.Cells(wsData.Rows.Count, SEQ_DATA_COL).End(xlUp).Row
 
-    ' Clear out any leftover clone sheets from an earlier interrupted run
     Application.DisplayAlerts = False
     For Each sh In ThisWorkbook.Sheets
         If Left(sh.Name, 6) = "CAPage" Then sh.Delete
@@ -179,9 +211,6 @@ Private Sub DoCombinedExport()
     pageIndex = 0
     ReDim pageNames(1 To lastRow)
 
-    ' Clone the REAL template sheet once per row — this is what guarantees the
-    ' combined PDF is pixel-identical to Individual mode: same logo, same
-    ' column widths, same merges, since it's literally the same sheet.
     For r = 2 To lastRow
         seqNo = wsData.Cells(r, SEQ_DATA_COL).Value
         If seqNo = "" Then GoTo NextRow
@@ -193,6 +222,17 @@ Private Sub DoCombinedExport()
 
         sh.Range(SEQ_INPUT_CELL).Value = seqNo
         Application.CalculateFullRebuild   ' guarantees rows never bleed together
+
+        ' Same QA scan as Individual mode, run against this page's own data
+        issueList = CheckFormulaIssues(sh, BLOCK_FIRST_ROW, BLOCK_LAST_ROW, ZERO_CHECK_EXCLUDE)
+        If issueList <> "" Then
+            wsData.Cells(r, STATUS_COL).Value = "INCLUDED - CHECK DATA: " & issueList & Format(Now, "dd/mm/yyyy hh:nn:ss")
+            wsData.Cells(r, STATUS_COL).Interior.Color = RGB(255, 199, 132)
+            warnCount = warnCount + 1
+        Else
+            wsData.Cells(r, STATUS_COL).Value = "INCLUDED - " & Format(Now, "dd/mm/yyyy hh:nn:ss")
+            wsData.Cells(r, STATUS_COL).Interior.ColorIndex = xlColorIndexNone
+        End If
 
         pageNames(pageIndex) = sh.Name
 
@@ -233,7 +273,8 @@ CleanExit:
         MsgBox "Combined export did not save - check the folder path and try again.", vbCritical
     Else
         MsgBox "Combined export finished in " & Format(Timer - startTime, "0.0") & " sec." & vbCrLf & _
-               "Advices included: " & includedCount & vbCrLf & "Saved as: " & savePath, vbInformation
+               "Advices included: " & includedCount & " (flagged for review: " & warnCount & ")" & vbCrLf & _
+               "Saved as: " & savePath, vbInformation
     End If
 End Sub
 
@@ -259,6 +300,41 @@ Private Function CheckFormulaIssues(ws As Worksheet, firstRow As Long, lastRow A
 
     CheckFormulaIssues = issues
 End Function
+
+Private Function LoadManifest(manifestPath As String) As Object
+    Dim dict As Object
+    Set dict = CreateObject("Scripting.Dictionary")
+    If Dir(manifestPath) = "" Then
+        Set LoadManifest = dict
+        Exit Function
+    End If
+
+    Dim fnum As Integer, txt As String, parts() As String, isHeader As Boolean
+    fnum = FreeFile
+    Open manifestPath For Input As #fnum
+    isHeader = True
+    Do While Not EOF(fnum)
+        Line Input #fnum, txt
+        If isHeader Then
+            isHeader = False
+        ElseIf Trim(txt) <> "" Then
+            parts = Split(txt, ",")
+            If UBound(parts) >= 1 Then dict(parts(0)) = parts(1)
+        End If
+    Loop
+    Close #fnum
+    Set LoadManifest = dict
+End Function
+
+Private Sub AppendManifestEntry(manifestPath As String, seqKey As String, fileName As String)
+    Dim fnum As Integer, needsHeader As Boolean
+    needsHeader = (Dir(manifestPath) = "")
+    fnum = FreeFile
+    Open manifestPath For Append As #fnum
+    If needsHeader Then Print #fnum, "SeqNo,FileName"
+    Print #fnum, seqKey & "," & fileName
+    Close #fnum
+End Sub
 
 Private Function CleanFileName(s As String) As String
     Dim badChars As Variant, ch As Variant
