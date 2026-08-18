@@ -1,5 +1,5 @@
 if [Stock reference] = null or [Stock reference] = "" then null
-else if [BO Name For PCP clients (enter manually as per STARR)] <> null and [BO Name For PCP clients (enter manually as per STARR)] <> "" and [Security Account Number for ISA/OSA Clients (enter manually as per STARR)] <> null and [Security Account Number for ISA/OSA Clients (enter manually as per STARR)] <> "" then null
-else if [BO Name For PCP clients (enter manually as per STARR)] <> null and [BO Name For PCP clients (enter manually as per STARR)] <> "" then [BOExportMatch]
-else if [Security Account Number for ISA/OSA Clients (enter manually as per STARR)] <> null and [Security Account Number for ISA/OSA Clients (enter manually as per STARR)] <> "" then [SecAcctMatch]
+else if [BOName] <> null and [BOName] <> "" and [SecAcctNo] <> null and [SecAcctNo] <> "" then null
+else if [BOName] <> null and [BOName] <> "" then [Beneficiary Name]
+else if [SecAcctNo] <> null and [SecAcctNo] <> "" then [Security account Name]
 else null
