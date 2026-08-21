@@ -1,5 +1,40 @@
-if [Stock reference] = null or [Stock reference] = "" then null
-else if [BOName] <> null and [BOName] <> "" and [SecAcctNo] <> null and [SecAcctNo] <> "" then null
-else if [BOName] <> null and [BOName] <> "" then [Beneficiary Name]
-else if [SecAcctNo] <> null and [SecAcctNo] <> "" then [Security account Name]
-else null
+Here's a checklist built from the operational gist — organized by role and stage:
+
+**Stage 0 — Intake & Allocation**
+- **Email Logged** — Request email received from the client/requester.
+- **Case Allocated** — Allocator has assigned a Processor and a Validator before work begins.
+
+**Stage 1 — Processor: Request & Attachment Verification**
+- **Request Type Identified** — Confirm whether it's a New, Replacement, or Corrected tax voucher request.
+- **PDF Template Complete & Signed** — Required columns filled in and the PDF request is signed.
+- **Excel Breakdown Attached** — Beneficiary breakdown Excel is present.
+- **Missing Attachments Escalated** — If either the PDF or the Excel breakdown is missing, share the blank template with the requester and request resubmission before proceeding.
+
+**Stage 2 — Processor: STARR Verification & Duplicate Check**
+- **Beneficiary Details Verified** — Name, account details, and address confirmed in STARR.
+- **Payment Details Verified** — Confirmed correct in Stock Management.
+- **Prior Issuance Check (Critical)** — Confirm no voucher was already issued to this beneficiary for this stock. Rule: one stock + one beneficiary = one voucher, ever. If one already exists, the request must be redirected to the Replacement Voucher procedure, not processed as new.
+
+**Stage 3 — Processor: Breakdown Upload**
+- **Breakdown Uploaded to STARR** — Proforma completed by the Processor, ready for Validator.
+
+**Stage 4 — Validator: Breakdown Validation**
+- **Breakdown Cross-Checked** — Matches the client-provided breakdown/files.
+- **Duplicate Issuance Re-Verified** — Independently re-confirmed before sign-off.
+- **Breakdown Validated** — Formal validation given before print stage starts.
+
+**Stage 5 — Processor: Print & Dispatch Prep**
+- **Voucher Printed from STARR**
+- **Cover Letter Attached** — Prepared and attached to the package for the client.
+
+**Stage 6 — Validator: Final QC & Sign-off**
+- **Cover Letter Checked** — Template reviewed for accuracy.
+- **Vouchers Checked** — Confirmed correctly produced for this specific request.
+- **Green Signal Given** — Formal approval before dispatch.
+
+**Stage 7 — Processor: Dispatch & Close-out**
+- **Package Dispatched** — Following Validator sign-off.
+- **Requester Notified** — Email sent with the DHL tracking number.
+- **Tracker Updated** — Internal tracker reflects completion.
+
+This maps cleanly onto the earlier SOP-based checklist too — Stages 1–2 correspond to Phases 1–3, Stages 3–4 to Phase 4, Stage 5–6 to Phase 5, and Stage 7 to Phase 6. I can merge both into a single master checklist (SOP phase + operational role side by side) if that would be more useful for evaluation purposes — just say the word.
