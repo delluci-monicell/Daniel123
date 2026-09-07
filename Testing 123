@@ -11,8 +11,11 @@ Attribute VB_Name = "M_Billing"
 '      Form Controls -> Button. Draw one over the "GENERATE PREVIEW"
 '      cell and assign macro GeneratePreview. Draw a second over
 '      "VALIDATE & SAVE" and assign macro ValidateAndSave.
-'   4. Fill in cell C5 (Tracker file path), C7 (Billing Year),
-'      C8 (Billing Month) on the Home sheet.
+'   4. On the Home sheet, fill in C5 with the Tracker file NAME (e.g.
+'      "Germany Tax voucher & LOR BAU.xlsx") -- not a path or SharePoint link.
+'      Open both the Tracker and this file in Excel yourself before running;
+'      the macro finds the Tracker among your open workbooks by that name.
+'      Fill in C7 (Billing Year) and C8 (Billing Month) too.
 '   5. Save. You're done -- click the buttons each month.
 '
 ' IF YOUR REAL FILES USE DIFFERENT SHEET / TABLE / HEADER NAMES
@@ -72,12 +75,10 @@ Sub GeneratePreview()
         Exit Sub
     End If
 
-    On Error Resume Next
-    Set wbTracker = Workbooks.Open(Filename:=trackerPath, ReadOnly:=True, UpdateLinks:=False)
-    On Error GoTo 0
+    Dim trackerWasOpen As Boolean
+    Set wbTracker = GetOrOpenTrackerWorkbook(trackerPath, trackerWasOpen)
     If wbTracker Is Nothing Then
-        MsgBox "Could not open the Tracker file at:" & vbCrLf & trackerPath & vbCrLf & _
-               "Check the path/link in cell " & CELL_TRACKER_PATH & ".", vbCritical
+        MsgBox "Couldn't find the Tracker file. Open it yourself in Excel first, then run this again.", vbCritical
         Exit Sub
     End If
 
@@ -94,7 +95,7 @@ Sub GeneratePreview()
 
     If colDateDispatch = 0 Or colHobartRef = 0 Or colAccountNum = 0 Or colAccountName = 0 _
        Or colBillingItems = 0 Or colBillingStatus = 0 Or colTVStatus = 0 Then
-        wbTracker.Close SaveChanges:=False
+        If Not trackerWasOpen Then wbTracker.Close SaveChanges:=False
         Exit Sub   ' GetColIndex already showed the error
     End If
 
@@ -142,7 +143,7 @@ Sub GeneratePreview()
         Next i
     End If
 
-    wbTracker.Close SaveChanges:=False
+    If Not trackerWasOpen Then wbTracker.Close SaveChanges:=False
 
     ClearPreviewArea
 
@@ -197,7 +198,12 @@ Sub ValidateAndSave()
     End If
 
     Dim wbTracker As Workbook
-    Set wbTracker = Workbooks.Open(Filename:=trackerPath, ReadOnly:=False, UpdateLinks:=False)
+    Dim trackerWasOpen As Boolean
+    Set wbTracker = GetOrOpenTrackerWorkbook(trackerPath, trackerWasOpen, openReadOnlyIfNotFound:=False)
+    If wbTracker Is Nothing Then
+        MsgBox "Couldn't find the Tracker file. Open it yourself in Excel first, then run this again.", vbCritical
+        Exit Sub
+    End If
     Dim wsTracker As Worksheet
     Set wsTracker = wbTracker.Sheets(TRACKER_SHEET)
     Dim tblTracker As ListObject
@@ -220,7 +226,11 @@ Sub ValidateAndSave()
         wsTracker.Cells(rowNum, colBillingStatus).Value = statusText
     Next i
 
-    wbTracker.Close SaveChanges:=True
+    If trackerWasOpen Then
+        wbTracker.Save
+    Else
+        wbTracker.Close SaveChanges:=True
+    End If
 
     ' ---- Append to Billing Master table ----
     Dim wsBilling As Worksheet, tblBilling As ListObject
@@ -288,6 +298,35 @@ End Sub
 ' ------------------------------------------------------------
 ' Helpers
 ' ------------------------------------------------------------
+
+' Finds the Tracker among workbooks already open in this Excel session (the normal
+' case when files live on SharePoint with no local sync -- you open both yourself,
+' then run the macro). Only falls back to Workbooks.Open if it isn't already open,
+' which requires C5 to hold a real local path or a direct link (not a Share link).
+Private Function GetOrOpenTrackerWorkbook(pathOrName As String, ByRef wasAlreadyOpen As Boolean, _
+                                           Optional openReadOnlyIfNotFound As Boolean = True) As Workbook
+    Dim wb As Workbook
+    Dim leafName As String
+
+    leafName = pathOrName
+    If InStrRev(leafName, "\") > 0 Then leafName = Mid(leafName, InStrRev(leafName, "\") + 1)
+    If InStrRev(leafName, "/") > 0 Then leafName = Mid(leafName, InStrRev(leafName, "/") + 1)
+
+    For Each wb In Application.Workbooks
+        If StrComp(wb.Name, leafName, vbTextCompare) = 0 Then
+            wasAlreadyOpen = True
+            Set GetOrOpenTrackerWorkbook = wb
+            Exit Function
+        End If
+    Next wb
+
+    wasAlreadyOpen = False
+    On Error Resume Next
+    Set wb = Workbooks.Open(Filename:=pathOrName, ReadOnly:=openReadOnlyIfNotFound, UpdateLinks:=False)
+    On Error GoTo 0
+    Set GetOrOpenTrackerWorkbook = wb
+End Function
+
 Private Function GetColIndex(tbl As ListObject, headerName As String) As Long
     Dim c As Long
     For c = 1 To tbl.ListColumns.Count
