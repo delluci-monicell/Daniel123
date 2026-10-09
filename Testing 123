@@ -1,67 +1,318 @@
 Option Explicit
 
-Public Const SHEET_NAME As String = "Home"
-Public Const FIRST_ROW As Long = 3
+Private Const SHEET_NAME As String = "Home"
+Private Const FIRST_ROW As Long = 3
+Private gHadBOM As Boolean
+Private gEOL As String
 
-Sub LoadXML()
-    Dim ws As Worksheet
-    Dim fPath As Variant
-    Dim stm As Object
-    Dim txt As String
-    Dim lines() As String
-    Dim i As Long
+Sub EditSingleFile()
+    Dim ws As Worksheet, fPath As String
+    Dim n As Long, f As Long, t As Long, m As Long
+    Dim txt As String, problem As String, msg As String, bk As String
+    Dim dotPos As Long
 
     Set ws = ThisWorkbook.Worksheets(SHEET_NAME)
 
-    fPath = Application.GetOpenFilename("XML Files (*.xml),*.xml", , "Select XML file")
-    If fPath = False Then Exit Sub
+    fPath = PickXmlFile()
+    If fPath = "" Then Exit Sub
+    fPath = ToLocalPath(fPath)
+    If fPath = "" Then Exit Sub
 
-    ' Read file as UTF-8
+    n = LoadToSheet(ws, fPath)
+    If n = 0 Then Exit Sub
+
+    If Not AskRange(n, f, t) Then Exit Sub
+
+    txt = BuildPreview(ws, n, f, t, m)
+    problem = CheckXml(txt)
+
+    msg = "Delete lines " & f & " to " & t & " (" & (t - f + 1) & " lines)." & vbCrLf & _
+          "First deleted: " & Left$(Trim$(CStr(ws.Cells(FIRST_ROW + f - 1, 2).Value)), 70) & vbCrLf & _
+          "Last deleted: " & Left$(Trim$(CStr(ws.Cells(FIRST_ROW + t - 1, 2).Value)), 70) & vbCrLf & _
+          "Lines before: " & n & "   after: " & m & vbCrLf
+    If problem = "" Then
+        msg = msg & "XML check: well-formed." & vbCrLf
+    Else
+        msg = msg & "XML check WARNING: " & problem & vbCrLf
+    End If
+    msg = msg & vbCrLf & "Red = deleted (column B). Result is in column D." & vbCrLf & _
+          "Export and overwrite the original file?"
+
+    If MsgBox(msg, vbYesNo + vbQuestion, "Confirm export") <> vbYes Then
+        MsgBox "Cancelled. File not changed.", vbInformation
+        Exit Sub
+    End If
+
+    dotPos = InStrRev(fPath, ".")
+    bk = Left$(fPath, dotPos - 1) & "_backup_" & Format(Now, "yyyymmdd_hhnnss") & Mid$(fPath, dotPos)
+
+    On Error GoTo EH
+    FileCopy fPath, bk
+    SaveUtf8 fPath, txt, gHadBOM
+    MsgBox "Saved: " & fPath & vbCrLf & "Backup: " & bk, vbInformation
+    Exit Sub
+EH:
+    MsgBox "Export failed: " & Err.Description & vbCrLf & _
+           "(File may be read-only or open in another program.)", vbCritical
+End Sub
+
+Private Function PickXmlFile() As String
+    With Application.FileDialog(3)   ' file picker
+        .Title = "Select XML file"
+        .AllowMultiSelect = False
+        .Filters.Clear
+        .Filters.Add "XML Files", "*.xml"
+        If .Show = -1 Then PickXmlFile = .SelectedItems(1)
+    End With
+End Function
+
+Private Function LoadToSheet(ws As Worksheet, ByVal fPath As String) As Long
+    Dim stm As Object, txt As String, lines() As String, i As Long
+    Dim arr() As Variant, n As Long
+
+    On Error GoTo EH
     Set stm = CreateObject("ADODB.Stream")
     With stm
-        .Type = 2              ' text
+        .Type = 2
         .Charset = "UTF-8"
         .Open
-        .LoadFromFile CStr(fPath)
+        .LoadFromFile fPath
         txt = .ReadText
         .Close
     End With
 
-    ' Remove BOM character if present
+    gHadBOM = False
     If Len(txt) > 0 Then
-        If AscW(Left$(txt, 1)) = &HFEFF Then txt = Mid$(txt, 2)
+        If AscW(Left$(txt, 1)) = &HFEFF Then txt = Mid$(txt, 2): gHadBOM = True
     End If
 
-    ' Normalise line endings, then split
+    If InStr(txt, vbCrLf) > 0 Then gEOL = vbCrLf Else gEOL = vbLf
     txt = Replace(txt, vbCrLf, vbLf)
     txt = Replace(txt, vbCr, vbLf)
     lines = Split(txt, vbLf)
+    n = UBound(lines) + 1
 
     Application.ScreenUpdating = False
-
-    ' Clear old content
-    ws.Range("A" & FIRST_ROW & ":B" & ws.Rows.Count).Clear
+    ws.Range("A1:D" & ws.Rows.Count).Clear
 
     ws.Range("A1").Value = "XML File Path"
-    ws.Range("B1").Value = CStr(fPath)
+    ws.Range("B1").Value = fPath
     ws.Range("A2").Value = "Line #"
-    ws.Range("B2").Value = "XML Content"
+    ws.Range("B2").Value = "Original"
+    ws.Range("C2").Value = "New #"
+    ws.Range("D2").Value = "Result after deletion"
+    ws.Range("A2:D2").Font.Bold = True
 
-    ' Write as text so Excel does not convert anything
-    ws.Range("B" & FIRST_ROW & ":B" & FIRST_ROW + UBound(lines)).NumberFormat = "@"
-
-    For i = 0 To UBound(lines)
-        ws.Cells(FIRST_ROW + i, 1).Value = i + 1
-        ws.Cells(FIRST_ROW + i, 2).Value = lines(i)
+    ReDim arr(1 To n, 1 To 2)
+    For i = 1 To n
+        arr(i, 1) = i
+        arr(i, 2) = lines(i - 1)
     Next i
 
-    ' Keep indentation visible
-    With ws.Range("B" & FIRST_ROW & ":B" & FIRST_ROW + UBound(lines))
+    ws.Range(ws.Cells(FIRST_ROW, 2), ws.Cells(FIRST_ROW + n - 1, 2)).NumberFormat = "@"
+    ws.Range(ws.Cells(FIRST_ROW, 1), ws.Cells(FIRST_ROW + n - 1, 2)).Value = arr
+    With ws.Range(ws.Cells(FIRST_ROW, 2), ws.Cells(FIRST_ROW + n - 1, 2))
         .Font.Name = "Consolas"
         .HorizontalAlignment = xlLeft
         .WrapText = False
     End With
 
     Application.ScreenUpdating = True
-    MsgBox "Loaded " & UBound(lines) + 1 & " lines.", vbInformation
+    LoadToSheet = n
+    Exit Function
+EH:
+    Application.ScreenUpdating = True
+    MsgBox "Could not read file: " & Err.Description, vbCritical
+End Function
+
+Private Function AskRange(ByVal n As Long, ByRef f As Long, ByRef t As Long) As Boolean
+    Dim a As String, b As String
+    a = InputBox("File has " & n & " lines." & vbCrLf & "Delete FROM line:", "Delete range")
+    If a = "" Then Exit Function
+    b = InputBox("Delete TO line:", "Delete range", a)
+    If b = "" Then Exit Function
+    If Not IsNumeric(a) Or Not IsNumeric(b) Then
+        MsgBox "Enter numbers only.", vbExclamation: Exit Function
+    End If
+    f = CLng(a): t = CLng(b)
+    If f < 1 Or t > n Or f > t Then
+        MsgBox "Invalid range. Use 1 to " & n & " and FROM <= TO.", vbExclamation: Exit Function
+    End If
+    AskRange = True
+End Function
+
+Private Function BuildPreview(ws As Worksheet, ByVal n As Long, ByVal f As Long, _
+                              ByVal t As Long, ByRef m As Long) As String
+    Dim src As Variant, outv() As Variant, outs() As String
+    Dim i As Long, k As Long, rngB As Range
+
+    Set rngB = ws.Range(ws.Cells(FIRST_ROW, 2), ws.Cells(FIRST_ROW + n - 1, 2))
+    src = rngB.Value
+
+    ' reset marking, then mark deleted lines
+    With ws.Range(ws.Cells(FIRST_ROW, 1), ws.Cells(FIRST_ROW + n - 1, 2))
+        .Font.ColorIndex = xlAutomatic
+        .Font.Strikethrough = False
+        .Interior.ColorIndex = xlNone
+    End With
+    With ws.Range(ws.Cells(FIRST_ROW + f - 1, 1), ws.Cells(FIRST_ROW + t - 1, 2))
+        .Font.Color = RGB(192, 0, 0)
+        .Font.Strikethrough = True
+        .Interior.Color = RGB(255, 220, 220)
+    End With
+
+    m = n - (t - f + 1)
+    ws.Range("C" & FIRST_ROW & ":D" & ws.Rows.Count).Clear
+
+    If m > 0 Then
+        ReDim outv(1 To m, 1 To 2)
+        ReDim outs(1 To m)
+        For i = 1 To n
+            If i < f Or i > t Then
+                k = k + 1
+                outv(k, 1) = k
+                outv(k, 2) = src(i, 1)
+                outs(k) = CStr(src(i, 1))
+            End If
+        Next i
+        ws.Range(ws.Cells(FIRST_ROW, 4), ws.Cells(FIRST_ROW + m - 1, 4)).NumberFormat = "@"
+        ws.Range(ws.Cells(FIRST_ROW, 3), ws.Cells(FIRST_ROW + m - 1, 4)).Value = outv
+        With ws.Range(ws.Cells(FIRST_ROW, 4), ws.Cells(FIRST_ROW + m - 1, 4))
+            .Font.Name = "Consolas"
+            .HorizontalAlignment = xlLeft
+            .WrapText = False
+        End With
+        BuildPreview = Join(outs, gEOL)
+    End If
+
+    ws.Range("C2").Value = "New #"
+    ws.Range("D2").Value = "Result after deletion"
+    ws.Range("A2:D2").Font.Bold = True
+    ws.Activate
+    ws.Cells(FIRST_ROW + f - 1, 2).Select
+End Function
+
+Private Function CheckXml(ByVal txt As String) As String
+    Dim d As Object
+    On Error GoTo EH
+    Set d = CreateObject("MSXML2.DOMDocument.6.0")
+    d.async = False
+    d.validateOnParse = False
+    If d.LoadXML(txt) Then
+        CheckXml = ""
+    Else
+        CheckXml = "result line " & d.parseError.Line & " - " & _
+                   Replace(Trim$(d.parseError.reason), vbCrLf, " ")
+    End If
+    Exit Function
+EH:
+    CheckXml = "could not run check"
+End Function
+
+Private Sub SaveUtf8(ByVal p As String, ByVal txt As String, ByVal withBOM As Boolean)
+    Dim s1 As Object, s2 As Object
+    Set s1 = CreateObject("ADODB.Stream")
+    s1.Type = 2
+    s1.Charset = "UTF-8"
+    s1.Open
+    s1.WriteText txt
+    s1.Position = 0
+    s1.Type = 1
+    If Not withBOM Then s1.Position = 3   ' skip BOM that ADODB adds
+    Set s2 = CreateObject("ADODB.Stream")
+    s2.Type = 1
+    s2.Open
+    s1.CopyTo s2
+    s2.SaveToFile p, 2                    ' overwrite
+    s1.Close
+    s2.Close
 End Sub
+
+' ---------- OneDrive / SharePoint link -> local synced path ----------
+
+Private Function ToLocalPath(ByVal p As String) As String
+    Dim u As String, segs() As String
+    Dim bases As New Collection, subs As Collection
+    Dim b As Variant, s As Variant, k As Long, j As Long
+    Dim rest As String, cand As String, nm As String
+
+    If LCase$(Left$(p, 4)) <> "http" Then
+        ToLocalPath = p
+        Exit Function
+    End If
+
+    u = UrlDecode(p)
+    u = Mid$(u, InStr(9, u, "/") + 1)       ' drop https://host/
+    segs = Split(u, "/")
+
+    AddBase bases, Environ$("OneDriveCommercial")
+    AddBase bases, Environ$("OneDrive")
+    AddBase bases, Environ$("OneDriveConsumer")
+    AddBase bases, Environ$("USERPROFILE")
+
+    For Each b In bases
+        ' try base itself, then one folder level below it (synced libraries)
+        Set subs = New Collection
+        subs.Add ""
+        On Error Resume Next
+        nm = Dir(CStr(b) & "\*", vbDirectory)
+        Do While nm <> ""
+            If nm <> "." And nm <> ".." Then
+                If (GetAttr(CStr(b) & "\" & nm) And vbDirectory) <> 0 Then subs.Add nm
+            End If
+            nm = Dir()
+        Loop
+        On Error GoTo 0
+
+        For Each s In subs
+            For k = 0 To UBound(segs) - 1
+                rest = ""
+                For j = k To UBound(segs)
+                    rest = rest & IIf(rest = "", "", "\") & segs(j)
+                Next j
+                cand = CStr(b) & IIf(s = "", "", "\" & s) & "\" & rest
+                If FileOk(cand) Then
+                    ToLocalPath = cand
+                    Exit Function
+                End If
+            Next k
+        Next s
+    Next b
+
+    MsgBox "This file is a web (OneDrive/SharePoint) link and I cannot find a synced copy on this PC." & _
+           vbCrLf & vbCrLf & "Options:" & vbCrLf & _
+           "1) In SharePoint/OneDrive click 'Sync', wait for it to finish, then run again." & vbCrLf & _
+           "2) Download the file from the browser, run again and pick the downloaded copy. " & _
+           "After editing, upload it back manually.", vbExclamation, "File not available locally"
+End Function
+
+Private Sub AddBase(c As Collection, ByVal p As String)
+    If p <> "" Then c.Add p
+End Sub
+
+Private Function FileOk(ByVal p As String) As Boolean
+    On Error Resume Next
+    FileOk = ((GetAttr(p) And vbDirectory) = 0)
+    If Err.Number <> 0 Then FileOk = False
+End Function
+
+Private Function UrlDecode(ByVal s As String) As String
+    Dim i As Long, r As String, h As String
+    i = 1
+    Do While i <= Len(s)
+        If Mid$(s, i, 1) = "%" And i + 2 <= Len(s) Then
+            h = Mid$(s, i + 1, 2)
+            If h Like "[0-9A-Fa-f][0-9A-Fa-f]" And CLng("&H" & h) < 128 Then
+                r = r & Chr$(CLng("&H" & h))
+                i = i + 3
+            Else
+                r = r & "%"
+                i = i + 1
+            End If
+        Else
+            r = r & Mid$(s, i, 1)
+            i = i + 1
+        End If
+    Loop
+    UrlDecode = r
+End Function
