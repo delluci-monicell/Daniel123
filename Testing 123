@@ -1,94 +1,66 @@
 ---
-name: sop-builder
-description: Builds SOP documents in three types (Checklist SOP, Process Guide, Process SOP). Asks the type and questions first, then drafts. Use when the user asks to create, write, or format an SOP, user guide, process document, or checklist control.
+name: doc-extractor
+description: Extracts mandatory fields from a scanned or text PDF or page images (Part II Declaration of Applicant on Page 1 and payment details on Page 5) in German, French, or English. Use when the user uploads a document or images and asks to extract, read, or capture details.
 ---
 
-# SOP Builder
+# Doc Extractor
 
 ## Procedure
-1. FIRST reply MUST ask only this, then stop and wait:
-   "Which type do you need?
-   1. Checklist SOP (control format: Description, Steps, Evidence Required)
-   2. Process Guide (detailed step-by-step user guide)
-   3. Process SOP (summary of what is done, all information, low detail)"
-2. After the user picks, ask the questions for that type in ONE message. Numbered. Max 6. Skip any the user already answered.
-3. After the answers, write the draft in the matching layout.
-4. After the draft, ask: "Any changes?" Apply edits only to what the user names.
-5. NEVER draft before the type is confirmed.
+1. IGNORE ALL PREVIOUS CHAT HISTORY. NEVER use names, amounts, or dates from earlier messages.
+2. If no document or image is attached, reply: "Please upload the document." Stop.
+3. Scan the attached document page by page with full OCR. Treat it as a blank slate.
+4. Extract the fields below.
+5. Output in the Output Format. Nothing else.
 
-## Questions: Type 1 Checklist SOP
-1. Control number, system, and name?
-2. What does the control confirm or verify (description)?
-3. What are the steps in order? Include navigation paths, statuses, and thresholds.
-4. Is evidence required? If yes: what, who sends it, to whom, who uploads it, where?
-5. Any conditional rule (for example, if statuses changed, attach a new export)?
+## Field Sources
+Page 1, Part II - Declaration of Applicant:
+- Name and first names or full corporate name: field "Name and first names or full corporate name of the beneficial owner"
+- Beneficiary Owner Tax ID: {{MISSING: label on form}}
+- Address: field "Address"
 
-## Questions: Type 2 Process Guide
-1. Process name and who will use this guide?
-2. Which systems, tools, or files are used?
-3. What access or inputs are needed before starting?
-4. What are all the steps in order, including menu paths, fields, and values?
-5. What are common errors and their fixes?
-6. What is the final result and who receives it?
-
-## Questions: Type 3 Process SOP
-1. Process name and purpose?
-2. Scope: what is covered and what is not?
-3. Roles involved and what each one does?
-4. Inputs and outputs?
-5. Main steps (what is done, short)?
-6. Controls, approvals, or evidence?
-
-## Layout: Type 1 Checklist SOP
-[Number] [SYSTEM] – [CONTROL NAME IN CAPS]
-
-Description: 1-2 sentences.
-
-Steps to perform the control:
-- Step Label - Instruction.
-
-Evidence Required – who sends what to whom, who uploads what to where. (Conditional rule in parentheses, only if given.)
-If no evidence: "Evidence Required – None."
-
-## Layout: Type 2 Process Guide
-Title
-Purpose: 1 sentence.
-Audience: role names.
-Tools and Access: list.
-Before You Start: list of prerequisites.
-Steps:
-1. Action sentence. Then on the next line: Path, Field, Value, or Result the user will see.
-2. (continue; one action per step)
-Common Errors: Error - Cause - Fix.
-Final Result: 1-2 sentences.
-
-## Layout: Type 3 Process SOP
-Title
-Purpose: 1-2 sentences.
-Scope: Covered / Not covered.
-Roles: Role - duty, one line each.
-Inputs: list.
-Process Summary: numbered list, one line per step, says what is done and who does it.
-Controls and Evidence: list.
-Outputs: list.
+Page 5:
+- Date of Issue: field "Income Payment Date"
+- Number of Coupons
+- Coupon Rate
+- Total Net Payment
+- Reference Code: {{MISSING: page and label}}
+- Fund Name
+- Address
+- Date
+- Number of Coupons
+- Total Net Payment
 
 ## Rules
-- MUST include ALL information the user gave. Type 3 shortens wording, NEVER drops facts.
-- MUST keep system names, statuses, numbers, and thresholds exactly as given.
-- MUST write navigation as: Home > Menu > Submenu.
-- MUST start each action with an imperative verb: Confirm, Identify, Send, Move, Verify, Enter, Click.
-- MUST use role names only: preparer, validator, Checklist Manager.
-- MUST mark gaps as {{MISSING: what}}.
-- NEVER add steps, systems, controls, or errors the user did not state.
-- NEVER name or blame individuals.
-- NEVER use filler: "as appropriate", "where applicable", "ensure that".
-- One action per step. Type 1 and 3: MAX 30 words per step. Type 2: MAX 40 words per step.
-- Type 1 MUST follow the layout exactly. Do not add sections.
+- MUST copy characters exactly as printed. NEVER reformat dates, numbers, or accents.
+- MUST give the image or page number for every value: (Image X).
+- MUST write "Not found" if a value is absent.
+- MUST re-check every digit in IDs, amounts, and dates.
+- NEVER guess, infer, or fill in a value.
+- NEVER translate values. Documents may be German, French, or English.
+- DO NOT include greetings, introductions, conclusions, or commentary.
+
+## Output Format
+Summary of the values I have learned from your images:
+- Name and first names or full corporate name: [Value] (Image X)
+- Beneficiary Owner Tax ID: [Value] (Image X)
+- Address: [Value] (Image X)
+- Date of Issue: [Value] (Image X)
+- Number of Coupons: [Value] (Image X)
+- Coupon Rate: [Value] (Image X)
+- Total Net Payment: [Value] (Image X)
+- Reference Code: [Value] (Image X)
+- Fund Name (Page 5): [Value] (Image X)
+- Address (Page 5): [Value] (Image X)
+- Date (Page 5): [Value] (Image X)
+- Number of Coupons (Page 5): [Value] (Image X)
+- Total Net Payment (Page 5): [Value] (Image X)
+
+Line 1: Name; Beneficiary Owner Tax ID; Address; Date of Issue; Number of Coupons; Coupon Rate; Total Net Payment; Reference Code
+Extraction 2
+Line 3: Fund Name; Address (Page 5); Date (Page 5); Number of Coupons (Page 5); Total Net Payment (Page 5)
 
 ## Checklist
-- Was the type confirmed before drafting?
-- Does the draft match the layout for that type?
-- Is every user fact present?
-- Is anything invented? Remove it.
-- Are all gaps marked {{MISSING}}?
-- Are all steps imperative and one action each?
+- Is every field filled or "Not found"?
+- Does every value have an image number?
+- Do Lines 1 and 3 match the bullets exactly?
+- Is there zero extra text?
