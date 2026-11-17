@@ -1,199 +1,42 @@
 ---
-name: humanizer
-description: Removes AI-generated phrasing and structural tells from text. Use when the user asks to humanize, de-AI, or make writing sound natural, or pastes text that reads like model output.
+name: sop-control-writer
+description: Writes daily checklist control entries in the team SOP format (Description, Steps to perform the control, Evidence Required) from the user's description, steps, and evidence notes. Use when the user asks to draft, write, or format an SOP control or checklist control.
 ---
 
-# Humanizer
+# SOP Control Writer
 
 ## Procedure
-1. Take the user's text. Keep meaning, facts, names, numbers, and quotes unchanged.
-2. Pass 1: replace banned words and phrases using the tables.
-3. Pass 2: fix the structural flags.
-4. Pass 3: apply the rhythm rules.
-5. Run the final check.
-6. Output ONLY the rewritten text. Add notes only if the user asks.
+1. Read the control name, description, steps, and evidence notes.
+2. If the evidence status or any step detail is missing, write {{MISSING: what}}. Ask at most 2 questions, only if essential.
+3. Fill the layout below.
+4. Run the checklist. Fix failures silently.
+5. Output ONLY the control. No intro, no sign-off.
 
-## Hard Rules
-- NEVER add facts, opinions, or anecdotes the source lacks.
-- NEVER change technical terms, code, citations, or quoted speech.
-- MUST keep the original language, person (I/we/you), and register.
-- MUST keep length within -20% to +5% of the original.
-- DO NOT use contractions if the source avoids them. Use them if the source uses them or is casual.
+## Layout
+[Number] [SYSTEM] – [CONTROL NAME IN CAPS]
 
-## Banned Words (delete or replace)
+Description: 1-2 sentences. State what is confirmed, verified, or updated.
 
-| Banned | Replace with |
-|---|---|
-| delve, delve into | look at, dig into |
-| tapestry, landscape, realm | (name the actual thing) |
-| leverage, utilize | use |
-| foster, facilitate | help, support |
-| robust, seamless, holistic | (give the concrete property) |
-| pivotal, crucial, vital, paramount | important, or cut |
-| underscore, highlight (verb) | show |
-| showcase | show |
-| testament to | shows |
-| game-changer, revolutionary, cutting-edge | (state the change) |
-| navigate (abstract) | handle, deal with |
-| intricate, multifaceted, nuanced | complex, or cut |
-| myriad, plethora | many |
-| embark on | start |
-| ever-evolving, ever-changing | changing |
-| unlock, unleash, elevate | enable, improve |
-| vibrant, bustling, rich (figurative) | (concrete detail) |
-| Moreover, Furthermore, Additionally | And, Also, or cut |
-| In conclusion, In summary, Overall | cut |
+Steps to perform the control:
+- Step Label - Instruction.
+- Step Label - Instruction.
 
-## Banned Phrases (delete the whole phrase)
-- "It's important to note that"
-- "It's worth noting that"
-- "In today's fast-paced world"
-- "In the realm of"
-- "plays a crucial role"
-- "a wide range of"
-- "I hope this helps"
-- "Let me know if you have any questions"
-- "Great question"
-- "As an AI"
-- "Certainly!" / "Absolutely!" / "Sure!" at the start of a reply
-- "Not only ... but also ..." (rewrite as two plain clauses)
-- "It's not just X, it's Y" (state Y directly)
-
-## Structural Flags
-
-| Flag | Fix |
-|---|---|
-| Rule-of-three lists used by default | Use the real number of items, often 1, 2, or 4 |
-| Every paragraph opens with a topic sentence | Open some with a fact, a number, or an example |
-| Paragraph ends with a moral or summary sentence | Delete that sentence |
-| Heading plus 3 bullets for a simple idea | Convert to a sentence or short paragraph |
-| Bold on random key phrases | Remove bold |
-| Em dashes more than 1 per 150 words | Use a comma, period, or parentheses |
-| Colon-then-list inside prose | Write as a sentence |
-| Intro that restates the question | Delete it |
-| Closing that restates the intro | Delete it |
-| Hedge stacks ("may potentially", "could possibly") | Keep one hedge or none |
-| Vague attribution ("experts say", "studies show") | Name the source or delete the claim |
-| Participle tail ("..., highlighting its importance") | Cut or make a new sentence |
-| Emoji bullets or headers | Remove |
-
-## Rhythm Rules
-- MUST vary sentence length. In any 5 consecutive sentences, include at least 1 under 8 words and 1 over 20 words.
-- NEVER start 3 consecutive sentences with the same word.
-- MAY start a sentence with And, But, or So.
-- MUST include at least one concrete detail (a number, name, or specific example) per paragraph when the source has one.
-- Prefer active voice. Prefer plain verbs over noun phrases ("decide", not "make a decision").
-- Prefer short, common words.
-
-## Final Check
-1. Search for every banned word and phrase. Count must be 0.
-2. Confirm every number, name, and quote matches the source.
-3. Read the first and last sentences. Neither may be a summary, a greeting, or a sign-off.
-4. Confirm the length is within limits.
-
-## Examples
-
-Input: "In today's fast-paced world, it's important to note that leveraging robust tools can foster seamless collaboration."
-Output: "Good tools make teamwork easier."
-
-Input: "The project not only reduced costs but also improved morale, highlighting its pivotal role in the company's success."
-Output: "The project cut costs and lifted morale."
-
-Input: "Moreover, the report delves into a myriad of factors. In conclusion, these insights underscore the need for action."
-Output: "The report covers many factors. They point to one thing: act now."
-
-
-
-
-
-
-
----
-name: prompt-master
-description: Writes or rewrites LLM prompts using a flat Role/Task/Constraints/Output Contract template. Use when the user asks to create, improve, fix, shorten, or convert a prompt or system prompt.
----
-
-# Prompt Master
-
-## Procedure
-1. Read the request. Detect mode: NEW (no prompt given), REFACTOR (prompt given, improve it), SHORTEN (cut tokens, keep behavior).
-2. Identify the target model or tool. If unstated, write for a generic instruction model.
-3. If the goal, input, or output format is missing, ask at most 3 questions. Otherwise DO NOT ask. Proceed.
-4. Fill the template below.
-5. Run the checklist. Fix failures silently.
-6. Reply with the final prompt in ONE code block, then at most 3 lines of notes.
-
-## Template
-
-ROLE: One sentence. Who the model is and its domain.
-TASK: One to three imperative sentences. State the single goal.
-INPUT: Name each input variable as {{variable}}. Say what it contains.
-CONSTRAINTS:
-- MUST ...
-- NEVER ...
-- DO NOT ...
-OUTPUT CONTRACT:
-- Format: (JSON / Markdown / plain text / table)
-- Length: exact limit (words, sentences, or items)
-- Fields or sections in order
-- Nothing before or after the output
-
-## Shot Lock
-- Default is ZERO-SHOT. Use zero-shot when the task is simple or the format is easy to describe.
-- Use FEW-SHOT (2-3 examples) ONLY when the format is strict, the style is hard to describe, or the task is a classification or extraction.
-- Few-shot examples MUST use identical format. Label them Input: / Output:.
-- NEVER mix zero-shot and few-shot in one prompt.
-- Put examples AFTER Constraints and BEFORE the live input.
+Evidence Required – [who sends what to whom, who uploads what to where]. (Conditional rule in parentheses, only if the user gave one.)
 
 ## Rules
-- MUST use imperative verbs: Write, List, Return, Classify.
-- MUST state every constraint as a testable rule. Replace "be concise" with "MAX 80 words".
-- MUST put the most important rule first and repeat it last for prompts over 300 words.
-- MUST keep the prompt flat. NO nested XML. NO nested bullets deeper than one level.
-- NEVER add reasoning scaffolds ("think step by step", "act as multiple experts") unless the user asks for them.
-- NEVER add filler: "please", "I want you to", "you are a helpful assistant", "make sure to try".
-- NEVER invent facts, tools, or variables the user did not provide. Mark gaps as {{MISSING: what}}.
-- NEVER mention model internals or hidden reasoning in the prompt.
-- If the target is a small open-weight model (Llama, Mistral, Gemma, Qwen), keep the prompt under 400 words and use one task per prompt. Split multi-task requests into separate prompts.
-
-## Rewrite Table
-
-| Weak | Replace with |
-|---|---|
-| Make it good | State the measurable criterion |
-| Be creative | Give tone, audience, and 1 example |
-| Don't be too long | MAX N words |
-| Explain in detail | List the N points to cover |
-| Output nicely | Name the exact format and fields |
-| Try to avoid X | NEVER X |
-| You should | MUST |
-
-## Refactor Mode
-1. List defects in the given prompt as bullets: vague goal, missing format, conflicting rules, missing input, filler.
-2. Output the fixed prompt using the template.
-3. DO NOT change the user's intent. DO NOT add new tasks.
+- MUST keep the user's step order, system names, statuses, and thresholds exactly (STARR, Hub, 7 days).
+- MUST write navigation as: Home > Menu > Submenu.
+- MUST begin each instruction with an imperative verb: Confirm, Identify, Send, Move, Verify, Ensure.
+- MUST use role names only: preparer, validator, Checklist Manager.
+- MUST write "Evidence Required – None." if the user says no evidence is needed.
+- NEVER add steps, systems, or controls the user did not state.
+- NEVER name or blame individuals.
+- NEVER use filler: "as appropriate", "where applicable".
+- One action per bullet. MAX 30 words per bullet.
 
 ## Checklist
-- Is there exactly one task?
-- Does every constraint use MUST, NEVER, or DO NOT?
-- Is the output format fully specified, including length?
-- Are all inputs named as {{variables}}?
-- Are there zero filler phrases?
-- Is the shot style consistent (all zero-shot or all few-shot)?
-- Does it fit the length limit for the target model?
-
-## Example
-
-Request: "prompt to summarize support tickets"
-
-ROLE: You are a support operations analyst.
-TASK: Summarize the ticket in {{ticket_text}}. Identify the customer's problem and the requested action.
-CONSTRAINTS:
-- MUST use only facts in {{ticket_text}}.
-- NEVER include names, emails, or phone numbers.
-- DO NOT speculate about causes.
-OUTPUT CONTRACT:
-- Format: JSON
-- Fields: "problem" (max 20 words), "requested_action" (max 15 words), "urgency" (low | medium | high)
-- Return JSON only. No other text.
-
+- Does the title have number, system, and name in caps?
+- Is every step a label, a dash, then an imperative instruction?
+- Is Evidence Required present?
+- Are there zero invented items?
+- Are all gaps marked {{MISSING}}?
