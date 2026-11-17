@@ -1,318 +1,199 @@
-Option Explicit
+---
+name: humanizer
+description: Removes AI-generated phrasing and structural tells from text. Use when the user asks to humanize, de-AI, or make writing sound natural, or pastes text that reads like model output.
+---
 
-Private Const SHEET_NAME As String = "Home"
-Private Const FIRST_ROW As Long = 3
-Private gHadBOM As Boolean
-Private gEOL As String
+# Humanizer
 
-Sub EditSingleFile()
-    Dim ws As Worksheet, fPath As String
-    Dim n As Long, f As Long, t As Long, m As Long
-    Dim txt As String, problem As String, msg As String, bk As String
-    Dim dotPos As Long
+## Procedure
+1. Take the user's text. Keep meaning, facts, names, numbers, and quotes unchanged.
+2. Pass 1: replace banned words and phrases using the tables.
+3. Pass 2: fix the structural flags.
+4. Pass 3: apply the rhythm rules.
+5. Run the final check.
+6. Output ONLY the rewritten text. Add notes only if the user asks.
 
-    Set ws = ThisWorkbook.Worksheets(SHEET_NAME)
+## Hard Rules
+- NEVER add facts, opinions, or anecdotes the source lacks.
+- NEVER change technical terms, code, citations, or quoted speech.
+- MUST keep the original language, person (I/we/you), and register.
+- MUST keep length within -20% to +5% of the original.
+- DO NOT use contractions if the source avoids them. Use them if the source uses them or is casual.
 
-    fPath = PickXmlFile()
-    If fPath = "" Then Exit Sub
-    fPath = ToLocalPath(fPath)
-    If fPath = "" Then Exit Sub
+## Banned Words (delete or replace)
 
-    n = LoadToSheet(ws, fPath)
-    If n = 0 Then Exit Sub
+| Banned | Replace with |
+|---|---|
+| delve, delve into | look at, dig into |
+| tapestry, landscape, realm | (name the actual thing) |
+| leverage, utilize | use |
+| foster, facilitate | help, support |
+| robust, seamless, holistic | (give the concrete property) |
+| pivotal, crucial, vital, paramount | important, or cut |
+| underscore, highlight (verb) | show |
+| showcase | show |
+| testament to | shows |
+| game-changer, revolutionary, cutting-edge | (state the change) |
+| navigate (abstract) | handle, deal with |
+| intricate, multifaceted, nuanced | complex, or cut |
+| myriad, plethora | many |
+| embark on | start |
+| ever-evolving, ever-changing | changing |
+| unlock, unleash, elevate | enable, improve |
+| vibrant, bustling, rich (figurative) | (concrete detail) |
+| Moreover, Furthermore, Additionally | And, Also, or cut |
+| In conclusion, In summary, Overall | cut |
 
-    If Not AskRange(n, f, t) Then Exit Sub
+## Banned Phrases (delete the whole phrase)
+- "It's important to note that"
+- "It's worth noting that"
+- "In today's fast-paced world"
+- "In the realm of"
+- "plays a crucial role"
+- "a wide range of"
+- "I hope this helps"
+- "Let me know if you have any questions"
+- "Great question"
+- "As an AI"
+- "Certainly!" / "Absolutely!" / "Sure!" at the start of a reply
+- "Not only ... but also ..." (rewrite as two plain clauses)
+- "It's not just X, it's Y" (state Y directly)
 
-    txt = BuildPreview(ws, n, f, t, m)
-    problem = CheckXml(txt)
+## Structural Flags
 
-    msg = "Delete lines " & f & " to " & t & " (" & (t - f + 1) & " lines)." & vbCrLf & _
-          "First deleted: " & Left$(Trim$(CStr(ws.Cells(FIRST_ROW + f - 1, 2).Value)), 70) & vbCrLf & _
-          "Last deleted: " & Left$(Trim$(CStr(ws.Cells(FIRST_ROW + t - 1, 2).Value)), 70) & vbCrLf & _
-          "Lines before: " & n & "   after: " & m & vbCrLf
-    If problem = "" Then
-        msg = msg & "XML check: well-formed." & vbCrLf
-    Else
-        msg = msg & "XML check WARNING: " & problem & vbCrLf
-    End If
-    msg = msg & vbCrLf & "Red = deleted (column B). Result is in column D." & vbCrLf & _
-          "Export and overwrite the original file?"
+| Flag | Fix |
+|---|---|
+| Rule-of-three lists used by default | Use the real number of items, often 1, 2, or 4 |
+| Every paragraph opens with a topic sentence | Open some with a fact, a number, or an example |
+| Paragraph ends with a moral or summary sentence | Delete that sentence |
+| Heading plus 3 bullets for a simple idea | Convert to a sentence or short paragraph |
+| Bold on random key phrases | Remove bold |
+| Em dashes more than 1 per 150 words | Use a comma, period, or parentheses |
+| Colon-then-list inside prose | Write as a sentence |
+| Intro that restates the question | Delete it |
+| Closing that restates the intro | Delete it |
+| Hedge stacks ("may potentially", "could possibly") | Keep one hedge or none |
+| Vague attribution ("experts say", "studies show") | Name the source or delete the claim |
+| Participle tail ("..., highlighting its importance") | Cut or make a new sentence |
+| Emoji bullets or headers | Remove |
 
-    If MsgBox(msg, vbYesNo + vbQuestion, "Confirm export") <> vbYes Then
-        MsgBox "Cancelled. File not changed.", vbInformation
-        Exit Sub
-    End If
+## Rhythm Rules
+- MUST vary sentence length. In any 5 consecutive sentences, include at least 1 under 8 words and 1 over 20 words.
+- NEVER start 3 consecutive sentences with the same word.
+- MAY start a sentence with And, But, or So.
+- MUST include at least one concrete detail (a number, name, or specific example) per paragraph when the source has one.
+- Prefer active voice. Prefer plain verbs over noun phrases ("decide", not "make a decision").
+- Prefer short, common words.
 
-    dotPos = InStrRev(fPath, ".")
-    bk = Left$(fPath, dotPos - 1) & "_backup_" & Format(Now, "yyyymmdd_hhnnss") & Mid$(fPath, dotPos)
+## Final Check
+1. Search for every banned word and phrase. Count must be 0.
+2. Confirm every number, name, and quote matches the source.
+3. Read the first and last sentences. Neither may be a summary, a greeting, or a sign-off.
+4. Confirm the length is within limits.
 
-    On Error GoTo EH
-    FileCopy fPath, bk
-    SaveUtf8 fPath, txt, gHadBOM
-    MsgBox "Saved: " & fPath & vbCrLf & "Backup: " & bk, vbInformation
-    Exit Sub
-EH:
-    MsgBox "Export failed: " & Err.Description & vbCrLf & _
-           "(File may be read-only or open in another program.)", vbCritical
-End Sub
+## Examples
 
-Private Function PickXmlFile() As String
-    With Application.FileDialog(3)   ' file picker
-        .Title = "Select XML file"
-        .AllowMultiSelect = False
-        .Filters.Clear
-        .Filters.Add "XML Files", "*.xml"
-        If .Show = -1 Then PickXmlFile = .SelectedItems(1)
-    End With
-End Function
+Input: "In today's fast-paced world, it's important to note that leveraging robust tools can foster seamless collaboration."
+Output: "Good tools make teamwork easier."
 
-Private Function LoadToSheet(ws As Worksheet, ByVal fPath As String) As Long
-    Dim stm As Object, txt As String, lines() As String, i As Long
-    Dim arr() As Variant, n As Long
+Input: "The project not only reduced costs but also improved morale, highlighting its pivotal role in the company's success."
+Output: "The project cut costs and lifted morale."
 
-    On Error GoTo EH
-    Set stm = CreateObject("ADODB.Stream")
-    With stm
-        .Type = 2
-        .Charset = "UTF-8"
-        .Open
-        .LoadFromFile fPath
-        txt = .ReadText
-        .Close
-    End With
+Input: "Moreover, the report delves into a myriad of factors. In conclusion, these insights underscore the need for action."
+Output: "The report covers many factors. They point to one thing: act now."
 
-    gHadBOM = False
-    If Len(txt) > 0 Then
-        If AscW(Left$(txt, 1)) = &HFEFF Then txt = Mid$(txt, 2): gHadBOM = True
-    End If
 
-    If InStr(txt, vbCrLf) > 0 Then gEOL = vbCrLf Else gEOL = vbLf
-    txt = Replace(txt, vbCrLf, vbLf)
-    txt = Replace(txt, vbCr, vbLf)
-    lines = Split(txt, vbLf)
-    n = UBound(lines) + 1
 
-    Application.ScreenUpdating = False
-    ws.Range("A1:D" & ws.Rows.Count).Clear
 
-    ws.Range("A1").Value = "XML File Path"
-    ws.Range("B1").Value = fPath
-    ws.Range("A2").Value = "Line #"
-    ws.Range("B2").Value = "Original"
-    ws.Range("C2").Value = "New #"
-    ws.Range("D2").Value = "Result after deletion"
-    ws.Range("A2:D2").Font.Bold = True
 
-    ReDim arr(1 To n, 1 To 2)
-    For i = 1 To n
-        arr(i, 1) = i
-        arr(i, 2) = lines(i - 1)
-    Next i
 
-    ws.Range(ws.Cells(FIRST_ROW, 2), ws.Cells(FIRST_ROW + n - 1, 2)).NumberFormat = "@"
-    ws.Range(ws.Cells(FIRST_ROW, 1), ws.Cells(FIRST_ROW + n - 1, 2)).Value = arr
-    With ws.Range(ws.Cells(FIRST_ROW, 2), ws.Cells(FIRST_ROW + n - 1, 2))
-        .Font.Name = "Consolas"
-        .HorizontalAlignment = xlLeft
-        .WrapText = False
-    End With
 
-    Application.ScreenUpdating = True
-    LoadToSheet = n
-    Exit Function
-EH:
-    Application.ScreenUpdating = True
-    MsgBox "Could not read file: " & Err.Description, vbCritical
-End Function
+---
+name: prompt-master
+description: Writes or rewrites LLM prompts using a flat Role/Task/Constraints/Output Contract template. Use when the user asks to create, improve, fix, shorten, or convert a prompt or system prompt.
+---
 
-Private Function AskRange(ByVal n As Long, ByRef f As Long, ByRef t As Long) As Boolean
-    Dim a As String, b As String
-    a = InputBox("File has " & n & " lines." & vbCrLf & "Delete FROM line:", "Delete range")
-    If a = "" Then Exit Function
-    b = InputBox("Delete TO line:", "Delete range", a)
-    If b = "" Then Exit Function
-    If Not IsNumeric(a) Or Not IsNumeric(b) Then
-        MsgBox "Enter numbers only.", vbExclamation: Exit Function
-    End If
-    f = CLng(a): t = CLng(b)
-    If f < 1 Or t > n Or f > t Then
-        MsgBox "Invalid range. Use 1 to " & n & " and FROM <= TO.", vbExclamation: Exit Function
-    End If
-    AskRange = True
-End Function
+# Prompt Master
 
-Private Function BuildPreview(ws As Worksheet, ByVal n As Long, ByVal f As Long, _
-                              ByVal t As Long, ByRef m As Long) As String
-    Dim src As Variant, outv() As Variant, outs() As String
-    Dim i As Long, k As Long, rngB As Range
+## Procedure
+1. Read the request. Detect mode: NEW (no prompt given), REFACTOR (prompt given, improve it), SHORTEN (cut tokens, keep behavior).
+2. Identify the target model or tool. If unstated, write for a generic instruction model.
+3. If the goal, input, or output format is missing, ask at most 3 questions. Otherwise DO NOT ask. Proceed.
+4. Fill the template below.
+5. Run the checklist. Fix failures silently.
+6. Reply with the final prompt in ONE code block, then at most 3 lines of notes.
 
-    Set rngB = ws.Range(ws.Cells(FIRST_ROW, 2), ws.Cells(FIRST_ROW + n - 1, 2))
-    src = rngB.Value
+## Template
 
-    ' reset marking, then mark deleted lines
-    With ws.Range(ws.Cells(FIRST_ROW, 1), ws.Cells(FIRST_ROW + n - 1, 2))
-        .Font.ColorIndex = xlAutomatic
-        .Font.Strikethrough = False
-        .Interior.ColorIndex = xlNone
-    End With
-    With ws.Range(ws.Cells(FIRST_ROW + f - 1, 1), ws.Cells(FIRST_ROW + t - 1, 2))
-        .Font.Color = RGB(192, 0, 0)
-        .Font.Strikethrough = True
-        .Interior.Color = RGB(255, 220, 220)
-    End With
+ROLE: One sentence. Who the model is and its domain.
+TASK: One to three imperative sentences. State the single goal.
+INPUT: Name each input variable as {{variable}}. Say what it contains.
+CONSTRAINTS:
+- MUST ...
+- NEVER ...
+- DO NOT ...
+OUTPUT CONTRACT:
+- Format: (JSON / Markdown / plain text / table)
+- Length: exact limit (words, sentences, or items)
+- Fields or sections in order
+- Nothing before or after the output
 
-    m = n - (t - f + 1)
-    ws.Range("C" & FIRST_ROW & ":D" & ws.Rows.Count).Clear
+## Shot Lock
+- Default is ZERO-SHOT. Use zero-shot when the task is simple or the format is easy to describe.
+- Use FEW-SHOT (2-3 examples) ONLY when the format is strict, the style is hard to describe, or the task is a classification or extraction.
+- Few-shot examples MUST use identical format. Label them Input: / Output:.
+- NEVER mix zero-shot and few-shot in one prompt.
+- Put examples AFTER Constraints and BEFORE the live input.
 
-    If m > 0 Then
-        ReDim outv(1 To m, 1 To 2)
-        ReDim outs(1 To m)
-        For i = 1 To n
-            If i < f Or i > t Then
-                k = k + 1
-                outv(k, 1) = k
-                outv(k, 2) = src(i, 1)
-                outs(k) = CStr(src(i, 1))
-            End If
-        Next i
-        ws.Range(ws.Cells(FIRST_ROW, 4), ws.Cells(FIRST_ROW + m - 1, 4)).NumberFormat = "@"
-        ws.Range(ws.Cells(FIRST_ROW, 3), ws.Cells(FIRST_ROW + m - 1, 4)).Value = outv
-        With ws.Range(ws.Cells(FIRST_ROW, 4), ws.Cells(FIRST_ROW + m - 1, 4))
-            .Font.Name = "Consolas"
-            .HorizontalAlignment = xlLeft
-            .WrapText = False
-        End With
-        BuildPreview = Join(outs, gEOL)
-    End If
+## Rules
+- MUST use imperative verbs: Write, List, Return, Classify.
+- MUST state every constraint as a testable rule. Replace "be concise" with "MAX 80 words".
+- MUST put the most important rule first and repeat it last for prompts over 300 words.
+- MUST keep the prompt flat. NO nested XML. NO nested bullets deeper than one level.
+- NEVER add reasoning scaffolds ("think step by step", "act as multiple experts") unless the user asks for them.
+- NEVER add filler: "please", "I want you to", "you are a helpful assistant", "make sure to try".
+- NEVER invent facts, tools, or variables the user did not provide. Mark gaps as {{MISSING: what}}.
+- NEVER mention model internals or hidden reasoning in the prompt.
+- If the target is a small open-weight model (Llama, Mistral, Gemma, Qwen), keep the prompt under 400 words and use one task per prompt. Split multi-task requests into separate prompts.
 
-    ws.Range("C2").Value = "New #"
-    ws.Range("D2").Value = "Result after deletion"
-    ws.Range("A2:D2").Font.Bold = True
-    ws.Activate
-    ws.Cells(FIRST_ROW + f - 1, 2).Select
-End Function
+## Rewrite Table
 
-Private Function CheckXml(ByVal txt As String) As String
-    Dim d As Object
-    On Error GoTo EH
-    Set d = CreateObject("MSXML2.DOMDocument.6.0")
-    d.async = False
-    d.validateOnParse = False
-    If d.LoadXML(txt) Then
-        CheckXml = ""
-    Else
-        CheckXml = "result line " & d.parseError.Line & " - " & _
-                   Replace(Trim$(d.parseError.reason), vbCrLf, " ")
-    End If
-    Exit Function
-EH:
-    CheckXml = "could not run check"
-End Function
+| Weak | Replace with |
+|---|---|
+| Make it good | State the measurable criterion |
+| Be creative | Give tone, audience, and 1 example |
+| Don't be too long | MAX N words |
+| Explain in detail | List the N points to cover |
+| Output nicely | Name the exact format and fields |
+| Try to avoid X | NEVER X |
+| You should | MUST |
 
-Private Sub SaveUtf8(ByVal p As String, ByVal txt As String, ByVal withBOM As Boolean)
-    Dim s1 As Object, s2 As Object
-    Set s1 = CreateObject("ADODB.Stream")
-    s1.Type = 2
-    s1.Charset = "UTF-8"
-    s1.Open
-    s1.WriteText txt
-    s1.Position = 0
-    s1.Type = 1
-    If Not withBOM Then s1.Position = 3   ' skip BOM that ADODB adds
-    Set s2 = CreateObject("ADODB.Stream")
-    s2.Type = 1
-    s2.Open
-    s1.CopyTo s2
-    s2.SaveToFile p, 2                    ' overwrite
-    s1.Close
-    s2.Close
-End Sub
+## Refactor Mode
+1. List defects in the given prompt as bullets: vague goal, missing format, conflicting rules, missing input, filler.
+2. Output the fixed prompt using the template.
+3. DO NOT change the user's intent. DO NOT add new tasks.
 
-' ---------- OneDrive / SharePoint link -> local synced path ----------
+## Checklist
+- Is there exactly one task?
+- Does every constraint use MUST, NEVER, or DO NOT?
+- Is the output format fully specified, including length?
+- Are all inputs named as {{variables}}?
+- Are there zero filler phrases?
+- Is the shot style consistent (all zero-shot or all few-shot)?
+- Does it fit the length limit for the target model?
 
-Private Function ToLocalPath(ByVal p As String) As String
-    Dim u As String, segs() As String
-    Dim bases As New Collection, subs As Collection
-    Dim b As Variant, s As Variant, k As Long, j As Long
-    Dim rest As String, cand As String, nm As String
+## Example
 
-    If LCase$(Left$(p, 4)) <> "http" Then
-        ToLocalPath = p
-        Exit Function
-    End If
+Request: "prompt to summarize support tickets"
 
-    u = UrlDecode(p)
-    u = Mid$(u, InStr(9, u, "/") + 1)       ' drop https://host/
-    segs = Split(u, "/")
+ROLE: You are a support operations analyst.
+TASK: Summarize the ticket in {{ticket_text}}. Identify the customer's problem and the requested action.
+CONSTRAINTS:
+- MUST use only facts in {{ticket_text}}.
+- NEVER include names, emails, or phone numbers.
+- DO NOT speculate about causes.
+OUTPUT CONTRACT:
+- Format: JSON
+- Fields: "problem" (max 20 words), "requested_action" (max 15 words), "urgency" (low | medium | high)
+- Return JSON only. No other text.
 
-    AddBase bases, Environ$("OneDriveCommercial")
-    AddBase bases, Environ$("OneDrive")
-    AddBase bases, Environ$("OneDriveConsumer")
-    AddBase bases, Environ$("USERPROFILE")
-
-    For Each b In bases
-        ' try base itself, then one folder level below it (synced libraries)
-        Set subs = New Collection
-        subs.Add ""
-        On Error Resume Next
-        nm = Dir(CStr(b) & "\*", vbDirectory)
-        Do While nm <> ""
-            If nm <> "." And nm <> ".." Then
-                If (GetAttr(CStr(b) & "\" & nm) And vbDirectory) <> 0 Then subs.Add nm
-            End If
-            nm = Dir()
-        Loop
-        On Error GoTo 0
-
-        For Each s In subs
-            For k = 0 To UBound(segs) - 1
-                rest = ""
-                For j = k To UBound(segs)
-                    rest = rest & IIf(rest = "", "", "\") & segs(j)
-                Next j
-                cand = CStr(b) & IIf(s = "", "", "\" & s) & "\" & rest
-                If FileOk(cand) Then
-                    ToLocalPath = cand
-                    Exit Function
-                End If
-            Next k
-        Next s
-    Next b
-
-    MsgBox "This file is a web (OneDrive/SharePoint) link and I cannot find a synced copy on this PC." & _
-           vbCrLf & vbCrLf & "Options:" & vbCrLf & _
-           "1) In SharePoint/OneDrive click 'Sync', wait for it to finish, then run again." & vbCrLf & _
-           "2) Download the file from the browser, run again and pick the downloaded copy. " & _
-           "After editing, upload it back manually.", vbExclamation, "File not available locally"
-End Function
-
-Private Sub AddBase(c As Collection, ByVal p As String)
-    If p <> "" Then c.Add p
-End Sub
-
-Private Function FileOk(ByVal p As String) As Boolean
-    On Error Resume Next
-    FileOk = ((GetAttr(p) And vbDirectory) = 0)
-    If Err.Number <> 0 Then FileOk = False
-End Function
-
-Private Function UrlDecode(ByVal s As String) As String
-    Dim i As Long, r As String, h As String
-    i = 1
-    Do While i <= Len(s)
-        If Mid$(s, i, 1) = "%" And i + 2 <= Len(s) Then
-            h = Mid$(s, i + 1, 2)
-            If h Like "[0-9A-Fa-f][0-9A-Fa-f]" And CLng("&H" & h) < 128 Then
-                r = r & Chr$(CLng("&H" & h))
-                i = i + 3
-            Else
-                r = r & "%"
-                i = i + 1
-            End If
-        Else
-            r = r & Mid$(s, i, 1)
-            i = i + 1
-        End If
-    Loop
-    UrlDecode = r
-End Function
