@@ -43,7 +43,8 @@ Public Sub BuildSRTracker()
         PutRow wsIn, 11, "TAXLCDE-ANZ-17798", DateSerial(2026, 10, 19), "Frankfurt LC", "Aishwarya", "Akshaya", 1, 0, 1, 1, 0, 0, ""
         PutRow wsIn, 12, "MILCYS-STE-81977", DateSerial(2026, 10, 6), "Milan", "Aishwarya", "Bharatwaj", 2, 2, 0, 0, 0, 5, ""
         PutRow wsIn, 13, "MILCYS-STE-81977", DateSerial(2026, 10, 6), "Milan", "Aishwarya", "Jaikrishna", 2, 2, 0, 0, 3, 0, ""
-        lastRow = 13
+        PutRow wsIn, 14, "MILCYS-FFI-81579", DateSerial(2026, 10, 6), "Milan", "Aishwarya", "Akshaya", 1, 1, 0, 0, 0, 10, "Fully submitted - hidden in SR View"
+        lastRow = 14
     Else
         lastRow = 2
     End If
@@ -90,9 +91,9 @@ End Sub
 Public Sub RefreshSRView()
     Dim wsV As Worksheet, lo As ListObject
     Dim data As Variant
-    Dim dSR As Object, dPpl As Object
+    Dim dSR As Object, dPpl As Object, dPend As Object, dSub As Object
     Dim i As Long, k As Long, r As Long, p As Long, q As Long
-    Dim first As Long, last As Long, nP As Long
+    Dim first As Long, last As Long, nP As Long, hiddenCnt As Long
     Dim sr As String, pe As String
     Dim key As Variant, parts As Variant
     Dim cols As Variant, c As Long
@@ -113,6 +114,8 @@ Public Sub RefreshSRView()
 
     Set dSR = CreateObject("Scripting.Dictionary")
     Set dPpl = CreateObject("Scripting.Dictionary")
+    Set dPend = CreateObject("Scripting.Dictionary")
+    Set dSub = CreateObject("Scripting.Dictionary")
 
     For i = 1 To UBound(data, 1)
         sr = Trim(CStr(data(i, 1)))
@@ -121,18 +124,19 @@ Public Sub RefreshSRView()
             If Not dSR.Exists(sr) Then
                 dSR.Add sr, i
                 dPpl.Add sr, "|"
+                dPend.Add sr, 0
+                dSub.Add sr, 0
             End If
             If InStr(1, dPpl(sr), "|" & pe & "|", vbTextCompare) = 0 Then
                 dPpl(sr) = dPpl(sr) & pe & "|"
             End If
+            dPend(sr) = dPend(sr) + Val(CStr(data(i, 9))) + Val(CStr(data(i, 10)))
+            dSub(sr) = dSub(sr) + Val(CStr(data(i, 11)))
         End If
     Next i
 
     wsV.Cells.ClearOutline
     wsV.Cells.Clear
-
-    wsV.Range("A1").Value = "SR Tracker - click + on the left of an SR to see each person"
-    wsV.Range("A1").Font.Italic = True
 
     hdr = Array("SR No / Allocated To", "Received Date", "Branch", "LOR Count", "SOL", "NON-SOL", _
                 "Pending with AM", "Pending with Chennai", "Submitted to GTA", "Total Payment Lines")
@@ -153,47 +157,62 @@ Public Sub RefreshSRView()
 
     For Each key In dSR.Keys
         sr = CStr(key)
-        parts = Split(Mid(dPpl(sr), 2), "|")
-        nP = UBound(parts)
-        p = r
-        first = p + 1
-        last = p + nP
 
-        wsV.Cells(p, 1).NumberFormat = "@"
-        wsV.Cells(p, 1).Value = sr
-        If IsDate(data(dSR(sr), 2)) Then
-            wsV.Cells(p, 2).Value = CDate(data(dSR(sr), 2))
-            wsV.Cells(p, 2).NumberFormat = "dd/mm/yyyy"
-        End If
-        wsV.Cells(p, 3).Value = data(dSR(sr), 3)
+        If dPend(sr) = 0 And dSub(sr) > 0 Then
+            hiddenCnt = hiddenCnt + 1          ' fully submitted -> not shown
+        Else
+            parts = Split(Mid(dPpl(sr), 2), "|")
+            nP = UBound(parts)
+            p = r
+            first = p + 1
+            last = p + nP
 
-        For c = 4 To 10
-            wsV.Cells(p, c).Formula = "=SUM(" & wsV.Cells(first, c).Address(False, False) & ":" & _
-                                      wsV.Cells(last, c).Address(False, False) & ")"
-        Next c
+            wsV.Cells(p, 1).NumberFormat = "@"
+            wsV.Cells(p, 1).Value = sr
+            If IsDate(data(dSR(sr), 2)) Then
+                wsV.Cells(p, 2).Value = CDate(data(dSR(sr), 2))
+                wsV.Cells(p, 2).NumberFormat = "dd/mm/yyyy"
+            End If
+            wsV.Cells(p, 3).Value = data(dSR(sr), 3)
 
-        With wsV.Range(wsV.Cells(p, 1), wsV.Cells(p, 10))
-            .Font.Bold = True
-            .Interior.Color = RGB(221, 235, 247)
-        End With
-
-        For k = 0 To nP - 1
-            q = p + 1 + k
-            wsV.Cells(q, 1).Value = parts(k)
-            wsV.Cells(q, 1).IndentLevel = 2
-            For c = 0 To 6
-                wsV.Cells(q, 4 + c).Formula = "=SUMIFS(tblInput[" & cols(c) & "],tblInput[SR No],$A$" & p & _
-                    ",tblInput[Allocated To],$A" & q & ")"
+            For c = 4 To 10
+                wsV.Cells(p, c).Formula = "=SUBTOTAL(9," & wsV.Cells(first, c).Address(False, False) & ":" & _
+                                          wsV.Cells(last, c).Address(False, False) & ")"
             Next c
-        Next k
 
-        wsV.Rows(first & ":" & last).Group
-        r = last + 1
+            With wsV.Range(wsV.Cells(p, 1), wsV.Cells(p, 10))
+                .Font.Bold = True
+                .Interior.Color = RGB(221, 235, 247)
+            End With
+
+            For k = 0 To nP - 1
+                q = p + 1 + k
+                wsV.Cells(q, 1).Value = parts(k)
+                wsV.Cells(q, 1).IndentLevel = 2
+                For c = 0 To 6
+                    wsV.Cells(q, 4 + c).Formula = "=SUMIFS(tblInput[" & cols(c) & "],tblInput[SR No],$A$" & p & _
+                        ",tblInput[Allocated To],$A" & q & ")"
+                Next c
+            Next k
+
+            wsV.Rows(first & ":" & last).Group
+            r = last + 1
+        End If
     Next key
 
+    wsV.Range("A1").Value = "SR Tracker - click + on the left of an SR to see each person  |  " & _
+                            hiddenCnt & " fully submitted SR(s) hidden"
+    wsV.Range("A1").Font.Italic = True
+
+    ' Grand total = visible SRs only (SUBTOTAL ignores the SR rows, counts person rows once)
     wsV.Cells(r, 1).Value = "Grand Total"
-    For c = 0 To 6
-        wsV.Cells(r, 4 + c).Formula = "=SUM(tblInput[" & cols(c) & "])"
+    For c = 4 To 10
+        If r > 4 Then
+            wsV.Cells(r, c).Formula = "=SUBTOTAL(9," & wsV.Cells(4, c).Address(False, False) & ":" & _
+                                      wsV.Cells(r - 1, c).Address(False, False) & ")"
+        Else
+            wsV.Cells(r, c).Value = 0
+        End If
     Next c
     With wsV.Range(wsV.Cells(r, 1), wsV.Cells(r, 10))
         .Font.Bold = True
