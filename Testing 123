@@ -5,31 +5,40 @@ Private Const SH_VW As String = "SR View"
 
 Public Sub BuildSRTracker()
     Dim wsIn As Worksheet, wsV As Worksheet, lo As ListObject
-    Dim hadData As Boolean, useSample As Boolean, lastRow As Long
-    Dim hdr As Variant, btn As Object, nm As Variant
+    Dim ex As Worksheet, lastRow As Long, useSample As Boolean
+    Dim nm As Variant, btn As Object, stepName As String
 
+    On Error GoTo EH
+    stepName = "checking existing Input sheet"
     On Error Resume Next
-    hadData = (ThisWorkbook.Worksheets(SH_IN).ListObjects("tblInput").ListRows.Count > 0)
-    On Error GoTo 0
-    If hadData Then
-        If MsgBox("Input sheet already has data. Rebuilding will ERASE it. Continue?", _
-                  vbYesNo + vbDefaultButton2 + vbExclamation) <> vbYes Then Exit Sub
+    Set ex = ThisWorkbook.Worksheets(SH_IN)
+    On Error GoTo EH
+    If Not ex Is Nothing Then
+        If Application.WorksheetFunction.CountA(ex.Range("A2:A5000")) > 0 Then
+            If MsgBox("Input sheet already has data. Rebuilding will ERASE it. Continue?", _
+                      vbYesNo + vbDefaultButton2 + vbExclamation) <> vbYes Then Exit Sub
+        End If
     End If
-
     useSample = (MsgBox("Load sample data?", vbYesNo + vbQuestion) = vbYes)
 
     Application.ScreenUpdating = False
+
+    stepName = "clearing the Input sheet"
     Set wsIn = GetOrAddSheet(SH_IN)
     Do While wsIn.ListObjects.Count > 0
         wsIn.ListObjects(1).Delete
     Loop
     wsIn.Cells.Clear
+    On Error Resume Next
+    wsIn.Cells.Validation.Delete
+    On Error GoTo EH
 
-    hdr = Array("SR No", "Received Date", "Branch", "Validator", "Allocated To", _
-                "LOR Count", "SOL", "NON-SOL", "Pending with AM", "Pending with Chennai", _
-                "Submitted to GTA", "Total Payment Lines", "Comments")
-    wsIn.Range("A1:M1").Value = hdr
+    stepName = "writing Input headers"
+    wsIn.Range("A1:M1").Value = Array("SR No", "Received Date", "Branch", "Validator", "Allocated To", _
+        "LOR Count", "SOL", "NON-SOL", "Pending with AM", "Pending with Chennai", _
+        "Submitted to GTA", "Total Payment Lines", "Comments")
 
+    stepName = "writing sample data"
     If useSample Then
         PutRow wsIn, 2, "MILCYS-RRI-81987", DateSerial(2026, 10, 8), "Milan", "Aishwarya", "Jaikrishna", 3, 3, 0, 3, 0, 0, ""
         PutRow wsIn, 3, "MILCYS-RRI-81987", DateSerial(2026, 10, 8), "Milan", "Aishwarya", "Bharatwaj", 3, 3, 0, 3, 0, 0, ""
@@ -49,74 +58,94 @@ Public Sub BuildSRTracker()
         lastRow = 2
     End If
 
+    stepName = "creating the Input table"
     Set lo = wsIn.ListObjects.Add(xlSrcRange, wsIn.Range("A1:M" & lastRow), , xlYes)
+    On Error Resume Next
     lo.Name = "tblInput"
     lo.TableStyle = "TableStyleMedium2"
-    lo.ListColumns("Received Date").DataBodyRange.NumberFormat = "dd/mm/yyyy"
-    lo.ListColumns("Total Payment Lines").DataBodyRange.Formula = _
-        "=SUM(tblInput[@[Pending with AM]:[Submitted to GTA]])"
-    lo.ListColumns("Total Payment Lines").DataBodyRange.Font.Bold = True
+    On Error GoTo EH
 
-    For Each nm In Array("Pending with AM", "Pending with Chennai", "Submitted to GTA")
-        With lo.ListColumns(CStr(nm)).DataBodyRange.Validation
+    stepName = "setting the Total Payment Lines formula"
+    wsIn.Range("L2:L" & lastRow).Formula = "=SUM(I2:K2)"
+    wsIn.Range("L2:L" & lastRow).Font.Bold = True
+    wsIn.Range("B2:B" & lastRow).NumberFormat = "dd/mm/yyyy"
+
+    stepName = "formatting the Input sheet"
+    On Error Resume Next
+    For Each nm In Array("I", "J", "K")
+        With wsIn.Range(nm & "2:" & nm & lastRow).Validation
             .Delete
             .Add Type:=xlValidateWholeNumber, AlertStyle:=xlValidAlertStop, _
                  Operator:=xlGreaterEqual, Formula1:="0"
             .ErrorMessage = "Enter a whole number of payment lines (0 or more)."
         End With
     Next nm
-
     wsIn.Columns("A:M").AutoFit
     wsIn.Columns("A").ColumnWidth = 24
     wsIn.Columns("I:L").ColumnWidth = 14
     wsIn.Columns("M").ColumnWidth = 30
     wsIn.Rows(1).WrapText = True
+    On Error GoTo EH
 
+    stepName = "creating the SR View sheet"
     Set wsV = GetOrAddSheet(SH_VW)
     wsV.Move Before:=ThisWorkbook.Worksheets(1)
 
     RefreshSRView
 
+    stepName = "adding the Refresh button"
     On Error Resume Next
     wsV.Buttons.Delete
-    On Error GoTo 0
     Set btn = wsV.Buttons.Add(wsV.Range("L2").Left, wsV.Range("L2").Top, 110, 28)
     btn.Caption = "Refresh View"
     btn.OnAction = "RefreshSRView"
+    On Error GoTo EH
 
     wsV.Activate
     Application.ScreenUpdating = True
+    Exit Sub
+
+EH:
+    Application.ScreenUpdating = True
+    MsgBox "Stopped while: " & stepName & vbCrLf & "Error " & Err.Number & ": " & Err.Description, vbExclamation
 End Sub
 
 Public Sub RefreshSRView()
-    Dim wsV As Worksheet, lo As ListObject
-    Dim data As Variant
-    Dim dSR As Object, dPpl As Object, dPend As Object, dSub As Object
-    Dim i As Long, k As Long, r As Long, p As Long, q As Long
+    Dim wsIn As Worksheet, wsV As Worksheet
+    Dim data As Variant, lastRow As Long
+    Dim dSR As Object, dPpl As Object, dPend As Object, dSub As Object, dSum As Object
+    Dim i As Long, k As Long, r As Long, p As Long, q As Long, c As Long
     Dim first As Long, last As Long, nP As Long, hiddenCnt As Long
-    Dim sr As String, pe As String
-    Dim key As Variant, parts As Variant
-    Dim cols As Variant, c As Long
-    Dim hdr As Variant
+    Dim sr As String, pe As String, key As Variant, parts As Variant
+    Dim stepName As String
 
+    On Error GoTo EH
+    stepName = "reading the Input sheet"
     On Error Resume Next
-    Set lo = ThisWorkbook.Worksheets(SH_IN).ListObjects("tblInput")
-    On Error GoTo 0
-    If lo Is Nothing Then
-        MsgBox "Input table (tblInput) not found. Run BuildSRTracker first.", vbExclamation
+    Set wsIn = ThisWorkbook.Worksheets(SH_IN)
+    On Error GoTo EH
+    If wsIn Is Nothing Then
+        MsgBox "Input sheet not found. Run BuildSRTracker first.", vbExclamation
         Exit Sub
     End If
-    If lo.DataBodyRange Is Nothing Then Exit Sub
 
     Application.ScreenUpdating = False
-    Set wsV = GetOrAddSheet(SH_VW)
-    data = lo.DataBodyRange.Value
+    lastRow = wsIn.Cells(wsIn.Rows.Count, 1).End(xlUp).Row
+    If lastRow < 2 Then lastRow = 2
+    data = wsIn.Range("A2:M" & lastRow).Value
 
     Set dSR = CreateObject("Scripting.Dictionary")
     Set dPpl = CreateObject("Scripting.Dictionary")
     Set dPend = CreateObject("Scripting.Dictionary")
     Set dSub = CreateObject("Scripting.Dictionary")
+    Set dSum = CreateObject("Scripting.Dictionary")
+    dSR.CompareMode = vbTextCompare
+    dPpl.CompareMode = vbTextCompare
+    dPend.CompareMode = vbTextCompare
+    dSub.CompareMode = vbTextCompare
+    dSum.CompareMode = vbTextCompare
 
+    stepName = "adding up the Input rows"
     For i = 1 To UBound(data, 1)
         sr = Trim(CStr(data(i, 1)))
         pe = Trim(CStr(data(i, 5)))
@@ -124,131 +153,4 @@ Public Sub RefreshSRView()
             If Not dSR.Exists(sr) Then
                 dSR.Add sr, i
                 dPpl.Add sr, "|"
-                dPend.Add sr, 0
-                dSub.Add sr, 0
-            End If
-            If InStr(1, dPpl(sr), "|" & pe & "|", vbTextCompare) = 0 Then
-                dPpl(sr) = dPpl(sr) & pe & "|"
-            End If
-            dPend(sr) = dPend(sr) + Val(CStr(data(i, 9))) + Val(CStr(data(i, 10)))
-            dSub(sr) = dSub(sr) + Val(CStr(data(i, 11)))
-        End If
-    Next i
-
-    wsV.Cells.ClearOutline
-    wsV.Cells.Clear
-
-    hdr = Array("SR No / Allocated To", "Received Date", "Branch", "LOR Count", "SOL", "NON-SOL", _
-                "Pending with AM", "Pending with Chennai", "Submitted to GTA", "Total Payment Lines")
-    wsV.Range("A3:J3").Value = hdr
-    With wsV.Range("A3:J3")
-        .Font.Bold = True
-        .Font.Color = RGB(255, 255, 255)
-        .Interior.Color = RGB(31, 78, 120)
-        .HorizontalAlignment = xlCenter
-        .VerticalAlignment = xlCenter
-        .WrapText = True
-    End With
-
-    ' View columns D:J map to these Input columns
-    cols = Array("LOR Count", "SOL", "NON-SOL", "Pending with AM", "Pending with Chennai", _
-                 "Submitted to GTA", "Total Payment Lines")
-    r = 4
-
-    For Each key In dSR.Keys
-        sr = CStr(key)
-
-        If dPend(sr) = 0 And dSub(sr) > 0 Then
-            hiddenCnt = hiddenCnt + 1          ' fully submitted -> not shown
-        Else
-            parts = Split(Mid(dPpl(sr), 2), "|")
-            nP = UBound(parts)
-            p = r
-            first = p + 1
-            last = p + nP
-
-            wsV.Cells(p, 1).NumberFormat = "@"
-            wsV.Cells(p, 1).Value = sr
-            If IsDate(data(dSR(sr), 2)) Then
-                wsV.Cells(p, 2).Value = CDate(data(dSR(sr), 2))
-                wsV.Cells(p, 2).NumberFormat = "dd/mm/yyyy"
-            End If
-            wsV.Cells(p, 3).Value = data(dSR(sr), 3)
-
-            For c = 4 To 10
-                wsV.Cells(p, c).Formula = "=SUBTOTAL(9," & wsV.Cells(first, c).Address(False, False) & ":" & _
-                                          wsV.Cells(last, c).Address(False, False) & ")"
-            Next c
-
-            With wsV.Range(wsV.Cells(p, 1), wsV.Cells(p, 10))
-                .Font.Bold = True
-                .Interior.Color = RGB(221, 235, 247)
-            End With
-
-            For k = 0 To nP - 1
-                q = p + 1 + k
-                wsV.Cells(q, 1).Value = parts(k)
-                wsV.Cells(q, 1).IndentLevel = 2
-                For c = 0 To 6
-                    wsV.Cells(q, 4 + c).Formula = "=SUMIFS(tblInput[" & cols(c) & "],tblInput[SR No],$A$" & p & _
-                        ",tblInput[Allocated To],$A" & q & ")"
-                Next c
-            Next k
-
-            wsV.Rows(first & ":" & last).Group
-            r = last + 1
-        End If
-    Next key
-
-    wsV.Range("A1").Value = "SR Tracker - click + on the left of an SR to see each person  |  " & _
-                            hiddenCnt & " fully submitted SR(s) hidden"
-    wsV.Range("A1").Font.Italic = True
-
-    ' Grand total = visible SRs only (SUBTOTAL ignores the SR rows, counts person rows once)
-    wsV.Cells(r, 1).Value = "Grand Total"
-    For c = 4 To 10
-        If r > 4 Then
-            wsV.Cells(r, c).Formula = "=SUBTOTAL(9," & wsV.Cells(4, c).Address(False, False) & ":" & _
-                                      wsV.Cells(r - 1, c).Address(False, False) & ")"
-        Else
-            wsV.Cells(r, c).Value = 0
-        End If
-    Next c
-    With wsV.Range(wsV.Cells(r, 1), wsV.Cells(r, 10))
-        .Font.Bold = True
-        .Borders(xlEdgeTop).LineStyle = xlContinuous
-    End With
-
-    wsV.Outline.SummaryRow = xlAbove
-    wsV.Outline.ShowLevels RowLevels:=1
-
-    wsV.Columns("A").ColumnWidth = 28
-    wsV.Columns("B:J").ColumnWidth = 14
-    wsV.Rows(3).RowHeight = 32
-
-    wsV.Activate
-    ActiveWindow.FreezePanes = False
-    wsV.Range("B4").Select
-    ActiveWindow.FreezePanes = True
-    wsV.Range("A1").Select
-    Application.ScreenUpdating = True
-End Sub
-
-Private Sub PutRow(ws As Worksheet, r As Long, sr As String, d As Date, br As String, _
-                   vl As String, pe As String, lor As Long, sol As Long, nsol As Long, _
-                   pAM As Long, pCH As Long, sGTA As Long, cm As String)
-    ws.Cells(r, 1).Resize(1, 11).Value = Array(sr, d, br, vl, pe, lor, sol, nsol, pAM, pCH, sGTA)
-    ws.Cells(r, 13).Value = cm
-End Sub
-
-Private Function GetOrAddSheet(nm As String) As Worksheet
-    Dim ws As Worksheet
-    On Error Resume Next
-    Set ws = ThisWorkbook.Worksheets(nm)
-    On Error GoTo 0
-    If ws Is Nothing Then
-        Set ws = ThisWorkbook.Worksheets.Add(After:=ThisWorkbook.Worksheets(ThisWorkbook.Worksheets.Count))
-        ws.Name = nm
-    End If
-    Set GetOrAddSheet = ws
-End Function
+                dPend.Add sr, 0#
