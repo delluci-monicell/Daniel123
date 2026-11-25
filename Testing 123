@@ -154,3 +154,157 @@ Public Sub RefreshSRView()
                 dSR.Add sr, i
                 dPpl.Add sr, "|"
                 dPend.Add sr, 0#
+                dSub.Add sr, 0#
+            End If
+            If InStr(1, dPpl(sr), "|" & pe & "|", vbTextCompare) = 0 Then
+                dPpl(sr) = dPpl(sr) & pe & "|"
+            End If
+            For c = 0 To 5
+                AddTo dSum, sr & "|" & pe & "|" & c, Val(CStr(data(i, 6 + c)))
+            Next c
+            AddTo dSum, sr & "|" & pe & "|6", Val(CStr(data(i, 9))) + Val(CStr(data(i, 10))) + Val(CStr(data(i, 11)))
+            dPend(sr) = dPend(sr) + Val(CStr(data(i, 9))) + Val(CStr(data(i, 10)))
+            dSub(sr) = dSub(sr) + Val(CStr(data(i, 11)))
+        End If
+    Next i
+
+    stepName = "preparing the SR View sheet"
+    Set wsV = GetOrAddSheet(SH_VW)
+    On Error Resume Next
+    wsV.Cells.ClearOutline
+    On Error GoTo EH
+    wsV.Cells.EntireRow.Hidden = False
+    wsV.Cells.Clear
+
+    wsV.Range("A3:J3").Value = Array("SR No / Allocated To", "Received Date", "Branch", "LOR Count", _
+        "SOL", "NON-SOL", "Pending with AM", "Pending with Chennai", "Submitted to GTA", "Total Payment Lines")
+    With wsV.Range("A3:J3")
+        .Font.Bold = True
+        .Font.Color = RGB(255, 255, 255)
+        .Interior.Color = RGB(31, 78, 120)
+        .HorizontalAlignment = xlCenter
+        .VerticalAlignment = xlCenter
+        .WrapText = True
+    End With
+
+    stepName = "writing the SR rows"
+    r = 4
+    For Each key In dSR.Keys
+        sr = CStr(key)
+        If dPend(sr) = 0 And dSub(sr) > 0 Then
+            hiddenCnt = hiddenCnt + 1
+        Else
+            parts = Split(Mid(dPpl(sr), 2), "|")
+            nP = UBound(parts)
+            p = r
+            first = p + 1
+            last = p + nP
+
+            wsV.Cells(p, 1).NumberFormat = "@"
+            wsV.Cells(p, 1).Value = sr
+            If IsDate(data(dSR(sr), 2)) Then
+                wsV.Cells(p, 2).Value = CDate(data(dSR(sr), 2))
+                wsV.Cells(p, 2).NumberFormat = "dd/mm/yyyy"
+            End If
+            wsV.Cells(p, 3).Value = data(dSR(sr), 3)
+
+            For c = 4 To 10
+                wsV.Cells(p, c).Formula = "=SUBTOTAL(9," & wsV.Cells(first, c).Address(False, False) & ":" & _
+                                          wsV.Cells(last, c).Address(False, False) & ")"
+            Next c
+            With wsV.Range(wsV.Cells(p, 1), wsV.Cells(p, 10))
+                .Font.Bold = True
+                .Interior.Color = RGB(221, 235, 247)
+            End With
+
+            For k = 0 To nP - 1
+                q = p + 1 + k
+                wsV.Cells(q, 1).Value = CStr(parts(k))
+                wsV.Cells(q, 1).IndentLevel = 2
+                For c = 0 To 6
+                    wsV.Cells(q, 4 + c).Value = GetSum(dSum, sr & "|" & CStr(parts(k)) & "|" & c)
+                Next c
+            Next k
+
+            On Error Resume Next
+            wsV.Rows(first & ":" & last).Group
+            On Error GoTo EH
+            r = last + 1
+        End If
+    Next key
+
+    stepName = "writing the heading and Grand Total"
+    wsV.Range("A1").Value = "SR Tracker - click + on the left of an SR to see each person  |  " & _
+                            hiddenCnt & " fully submitted SR(s) hidden"
+    wsV.Range("A1").Font.Italic = True
+
+    wsV.Cells(r, 1).Value = "Grand Total"
+    For c = 4 To 10
+        If r > 4 Then
+            wsV.Cells(r, c).Formula = "=SUBTOTAL(9," & wsV.Cells(4, c).Address(False, False) & ":" & _
+                                      wsV.Cells(r - 1, c).Address(False, False) & ")"
+        Else
+            wsV.Cells(r, c).Value = 0
+        End If
+    Next c
+    With wsV.Range(wsV.Cells(r, 1), wsV.Cells(r, 10))
+        .Font.Bold = True
+        .Borders(xlEdgeTop).LineStyle = xlContinuous
+    End With
+
+    stepName = "final formatting"
+    wsV.Columns("A").ColumnWidth = 28
+    wsV.Columns("B:J").ColumnWidth = 14
+    wsV.Rows(3).RowHeight = 32
+    On Error Resume Next
+    wsV.Outline.SummaryRow = xlAbove
+    wsV.Outline.ShowLevels RowLevels:=1
+    wsV.Activate
+    ActiveWindow.FreezePanes = False
+    wsV.Range("B4").Select
+    ActiveWindow.FreezePanes = True
+    wsV.Range("A1").Select
+    On Error GoTo EH
+
+    Application.ScreenUpdating = True
+    Exit Sub
+
+EH:
+    Application.ScreenUpdating = True
+    MsgBox "Stopped while: " & stepName & vbCrLf & "Error " & Err.Number & ": " & Err.Description, vbExclamation
+End Sub
+
+Private Sub AddTo(d As Object, k As String, v As Double)
+    If d.Exists(k) Then
+        d(k) = d(k) + v
+    Else
+        d.Add k, v
+    End If
+End Sub
+
+Private Function GetSum(d As Object, k As String) As Double
+    If d.Exists(k) Then
+        GetSum = d(k)
+    Else
+        GetSum = 0
+    End If
+End Function
+
+Private Sub PutRow(ws As Worksheet, r As Long, sr As String, d As Date, br As String, _
+                   vl As String, pe As String, lor As Long, sol As Long, nsol As Long, _
+                   pAM As Long, pCH As Long, sGTA As Long, cm As String)
+    ws.Cells(r, 1).Resize(1, 11).Value = Array(sr, d, br, vl, pe, lor, sol, nsol, pAM, pCH, sGTA)
+    ws.Cells(r, 13).Value = cm
+End Sub
+
+Private Function GetOrAddSheet(nm As String) As Worksheet
+    Dim ws As Worksheet
+    On Error Resume Next
+    Set ws = ThisWorkbook.Worksheets(nm)
+    On Error GoTo 0
+    If ws Is Nothing Then
+        Set ws = ThisWorkbook.Worksheets.Add(After:=ThisWorkbook.Worksheets(ThisWorkbook.Worksheets.Count))
+        ws.Name = nm
+    End If
+    Set GetOrAddSheet = ws
+End Function
