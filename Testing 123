@@ -6,7 +6,7 @@ Private Const SH_VW As String = "SR View"
 Public Sub BuildSRTracker()
     Dim wsIn As Worksheet, wsV As Worksheet, lo As ListObject
     Dim hadData As Boolean, useSample As Boolean, lastRow As Long
-    Dim hdr As Variant, btn As Object
+    Dim hdr As Variant, btn As Object, nm As Variant
 
     On Error Resume Next
     hadData = (ThisWorkbook.Worksheets(SH_IN).ListObjects("tblInput").ListRows.Count > 0)
@@ -26,42 +26,50 @@ Public Sub BuildSRTracker()
     wsIn.Cells.Clear
 
     hdr = Array("SR No", "Received Date", "Branch", "Validator", "Allocated To", _
-                "LOR Count", "SOL", "NON-SOL", "Payment Lines", "Status", "Comments")
-    wsIn.Range("A1:K1").Value = hdr
+                "LOR Count", "SOL", "NON-SOL", "Pending with AM", "Pending with Chennai", _
+                "Submitted to GTA", "Total Payment Lines", "Comments")
+    wsIn.Range("A1:M1").Value = hdr
 
     If useSample Then
-        PutRow wsIn, 2, "MILCYS-RRI-81987", DateSerial(2026, 10, 8), "Milan", "Aishwarya", "Jaikrishna", 3, 3, 0, 3, "Pending with AM", ""
-        PutRow wsIn, 3, "MILCYS-RRI-81987", DateSerial(2026, 10, 8), "Milan", "Aishwarya", "Bharatwaj", 3, 3, 0, 3, "Pending with AM", ""
-        PutRow wsIn, 4, "MILCYS-RRI-81987", DateSerial(2026, 10, 8), "Milan", "Aishwarya", "Badri", 4, 4, 0, 4, "Pending with AM", ""
-        PutRow wsIn, 5, "MILCYS-RRI-81987", DateSerial(2026, 10, 8), "Milan", "Aishwarya", "Nandhakumar", 3, 3, 0, 3, "Pending with AM", ""
-        PutRow wsIn, 6, "GCNL-DSA-692", DateSerial(2026, 10, 30), "Paris", "Aishwarya", "Akshaya", 2, 2, 0, 2, "Pending with AM", ""
-        PutRow wsIn, 7, "GCNL-DSA-692", DateSerial(2026, 10, 30), "Paris", "Aishwarya", "Badri", 3, 3, 0, 6, "Pending with Chennai", ""
-        PutRow wsIn, 8, "GCNL-DSA-692", DateSerial(2026, 10, 30), "Paris", "Aishwarya", "Jai Krishna", 2, 2, 0, 6, "Pending with AM", ""
-        PutRow wsIn, 9, "GCNL-DSA-692", DateSerial(2026, 10, 30), "Paris", "Aishwarya", "Nandhakumar", 2, 2, 0, 4, "Submitted to GTA", "Split line"
-        PutRow wsIn, 10, "GCNL-DSA-692", DateSerial(2026, 10, 30), "Paris", "Aishwarya", "Nandhakumar", 1, 1, 0, 2, "Pending with Chennai", "Split line"
-        PutRow wsIn, 11, "MILCYS-RRI-81994", DateSerial(2026, 11, 10), "Milan", "Aishwarya", "Akshaya", 1, 1, 0, 1, "Pending with AM", ""
-        PutRow wsIn, 12, "TAXLCDE-ANZ-17798", DateSerial(2026, 10, 19), "Frankfurt LC", "Aishwarya", "Akshaya", 1, 0, 1, 1, "Pending with AM", ""
-        PutRow wsIn, 13, "MILCYS-STE-81977", DateSerial(2026, 10, 6), "Milan", "Aishwarya", "Bharatwaj", 2, 2, 0, 5, "Submitted to GTA", ""
-        PutRow wsIn, 14, "MILCYS-STE-81977", DateSerial(2026, 10, 6), "Milan", "Aishwarya", "Jaikrishna", 2, 2, 0, 3, "Pending with Chennai", ""
-        lastRow = 14
+        PutRow wsIn, 2, "MILCYS-RRI-81987", DateSerial(2026, 10, 8), "Milan", "Aishwarya", "Jaikrishna", 3, 3, 0, 3, 0, 0, ""
+        PutRow wsIn, 3, "MILCYS-RRI-81987", DateSerial(2026, 10, 8), "Milan", "Aishwarya", "Bharatwaj", 3, 3, 0, 3, 0, 0, ""
+        PutRow wsIn, 4, "MILCYS-RRI-81987", DateSerial(2026, 10, 8), "Milan", "Aishwarya", "Badri", 4, 4, 0, 4, 0, 0, ""
+        PutRow wsIn, 5, "MILCYS-RRI-81987", DateSerial(2026, 10, 8), "Milan", "Aishwarya", "Nandhakumar", 3, 3, 0, 3, 0, 0, ""
+        PutRow wsIn, 6, "GCNL-DSA-692", DateSerial(2026, 10, 30), "Paris", "Aishwarya", "Akshaya", 2, 2, 0, 2, 0, 0, ""
+        PutRow wsIn, 7, "GCNL-DSA-692", DateSerial(2026, 10, 30), "Paris", "Aishwarya", "Badri", 3, 3, 0, 0, 6, 0, ""
+        PutRow wsIn, 8, "GCNL-DSA-692", DateSerial(2026, 10, 30), "Paris", "Aishwarya", "Jai Krishna", 2, 2, 0, 6, 0, 0, ""
+        PutRow wsIn, 9, "GCNL-DSA-692", DateSerial(2026, 10, 30), "Paris", "Aishwarya", "Nandhakumar", 3, 3, 0, 0, 2, 4, ""
+        PutRow wsIn, 10, "MILCYS-RRI-81994", DateSerial(2026, 11, 10), "Milan", "Aishwarya", "Akshaya", 1, 1, 0, 1, 0, 0, ""
+        PutRow wsIn, 11, "TAXLCDE-ANZ-17798", DateSerial(2026, 10, 19), "Frankfurt LC", "Aishwarya", "Akshaya", 1, 0, 1, 1, 0, 0, ""
+        PutRow wsIn, 12, "MILCYS-STE-81977", DateSerial(2026, 10, 6), "Milan", "Aishwarya", "Bharatwaj", 2, 2, 0, 0, 0, 5, ""
+        PutRow wsIn, 13, "MILCYS-STE-81977", DateSerial(2026, 10, 6), "Milan", "Aishwarya", "Jaikrishna", 2, 2, 0, 0, 3, 0, ""
+        lastRow = 13
     Else
         lastRow = 2
     End If
 
-    Set lo = wsIn.ListObjects.Add(xlSrcRange, wsIn.Range("A1:K" & lastRow), , xlYes)
+    Set lo = wsIn.ListObjects.Add(xlSrcRange, wsIn.Range("A1:M" & lastRow), , xlYes)
     lo.Name = "tblInput"
     lo.TableStyle = "TableStyleMedium2"
     lo.ListColumns("Received Date").DataBodyRange.NumberFormat = "dd/mm/yyyy"
+    lo.ListColumns("Total Payment Lines").DataBodyRange.Formula = _
+        "=SUM(tblInput[@[Pending with AM]:[Submitted to GTA]])"
+    lo.ListColumns("Total Payment Lines").DataBodyRange.Font.Bold = True
 
-    With lo.ListColumns("Status").DataBodyRange.Validation
-        .Delete
-        .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, _
-             Formula1:="Pending with AM,Pending with Chennai,Submitted to GTA"
-    End With
+    For Each nm In Array("Pending with AM", "Pending with Chennai", "Submitted to GTA")
+        With lo.ListColumns(CStr(nm)).DataBodyRange.Validation
+            .Delete
+            .Add Type:=xlValidateWholeNumber, AlertStyle:=xlValidAlertStop, _
+                 Operator:=xlGreaterEqual, Formula1:="0"
+            .ErrorMessage = "Enter a whole number of payment lines (0 or more)."
+        End With
+    Next nm
 
-    wsIn.Columns("A:K").AutoFit
+    wsIn.Columns("A:M").AutoFit
     wsIn.Columns("A").ColumnWidth = 24
-    wsIn.Columns("K").ColumnWidth = 30
+    wsIn.Columns("I:L").ColumnWidth = 14
+    wsIn.Columns("M").ColumnWidth = 30
+    wsIn.Rows(1).WrapText = True
 
     Set wsV = GetOrAddSheet(SH_VW)
     wsV.Move Before:=ThisWorkbook.Worksheets(1)
@@ -127,17 +135,20 @@ Public Sub RefreshSRView()
     wsV.Range("A1").Font.Italic = True
 
     hdr = Array("SR No / Allocated To", "Received Date", "Branch", "LOR Count", "SOL", "NON-SOL", _
-                "Total Payment Lines", "Pending with AM", "Pending with Chennai", "Submitted to GTA")
+                "Pending with AM", "Pending with Chennai", "Submitted to GTA", "Total Payment Lines")
     wsV.Range("A3:J3").Value = hdr
     With wsV.Range("A3:J3")
         .Font.Bold = True
         .Font.Color = RGB(255, 255, 255)
         .Interior.Color = RGB(31, 78, 120)
         .HorizontalAlignment = xlCenter
+        .VerticalAlignment = xlCenter
         .WrapText = True
     End With
 
-    cols = Array("LOR Count", "SOL", "NON-SOL", "Payment Lines")
+    ' View columns D:J map to these Input columns
+    cols = Array("LOR Count", "SOL", "NON-SOL", "Pending with AM", "Pending with Chennai", _
+                 "Submitted to GTA", "Total Payment Lines")
     r = 4
 
     For Each key In dSR.Keys
@@ -170,13 +181,9 @@ Public Sub RefreshSRView()
             q = p + 1 + k
             wsV.Cells(q, 1).Value = parts(k)
             wsV.Cells(q, 1).IndentLevel = 2
-            For c = 0 To 3
+            For c = 0 To 6
                 wsV.Cells(q, 4 + c).Formula = "=SUMIFS(tblInput[" & cols(c) & "],tblInput[SR No],$A$" & p & _
                     ",tblInput[Allocated To],$A" & q & ")"
-            Next c
-            For c = 8 To 10
-                wsV.Cells(q, c).Formula = "=SUMIFS(tblInput[Payment Lines],tblInput[SR No],$A$" & p & _
-                    ",tblInput[Allocated To],$A" & q & ",tblInput[Status]," & wsV.Cells(3, c).Address(True, False) & ")"
             Next c
         Next k
 
@@ -185,12 +192,8 @@ Public Sub RefreshSRView()
     Next key
 
     wsV.Cells(r, 1).Value = "Grand Total"
-    wsV.Cells(r, 4).Formula = "=SUM(tblInput[LOR Count])"
-    wsV.Cells(r, 5).Formula = "=SUM(tblInput[SOL])"
-    wsV.Cells(r, 6).Formula = "=SUM(tblInput[NON-SOL])"
-    wsV.Cells(r, 7).Formula = "=SUM(tblInput[Payment Lines])"
-    For c = 8 To 10
-        wsV.Cells(r, c).Formula = "=SUMIFS(tblInput[Payment Lines],tblInput[Status]," & wsV.Cells(3, c).Address(True, False) & ")"
+    For c = 0 To 6
+        wsV.Cells(r, 4 + c).Formula = "=SUM(tblInput[" & cols(c) & "])"
     Next c
     With wsV.Range(wsV.Cells(r, 1), wsV.Cells(r, 10))
         .Font.Bold = True
@@ -214,8 +217,9 @@ End Sub
 
 Private Sub PutRow(ws As Worksheet, r As Long, sr As String, d As Date, br As String, _
                    vl As String, pe As String, lor As Long, sol As Long, nsol As Long, _
-                   lines As Long, st As String, cm As String)
-    ws.Cells(r, 1).Resize(1, 11).Value = Array(sr, d, br, vl, pe, lor, sol, nsol, lines, st, cm)
+                   pAM As Long, pCH As Long, sGTA As Long, cm As String)
+    ws.Cells(r, 1).Resize(1, 11).Value = Array(sr, d, br, vl, pe, lor, sol, nsol, pAM, pCH, sGTA)
+    ws.Cells(r, 13).Value = cm
 End Sub
 
 Private Function GetOrAddSheet(nm As String) As Worksheet
